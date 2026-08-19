@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<ruleset name="Java complexity"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
+    <description>Complexity limits for production Java.</description>
+    <!-- NeoForge requires runtime GameTests in main sources; they are test orchestration. -->
+    <exclude-pattern>.*RegionalChunkGameTests\.java</exclude-pattern>
+
+    <rule ref="category/java/design.xml/CognitiveComplexity"/>
+    <rule ref="category/java/design.xml/CyclomaticComplexity">
+        <properties>
+            <!-- LevelRegionIndex totals 239; split it into subsystems if it reaches 250. -->
+            <property name="classReportLevel" value="250"/>
+        </properties>
+    </rule>
+    <rule ref="category/java/design.xml/NcssCount"/>
+    <rule ref="category/java/design.xml/NPathComplexity"/>
+</ruleset>
