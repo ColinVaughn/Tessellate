@@ -47,7 +47,7 @@ def wait_stable(rcon, timeout=180.0, settle_reads=3):
     stable = 0
     out = ""
     while time.time() < deadline:
-        out = rcon.command("optimal regions")
+        out = rcon.command("tessellate regions")
         state = overworld_from(out)
         if state.chunks == last:
             stable += 1
@@ -77,11 +77,11 @@ def show(out):
 
 def main():
     with Rcon(timeout=60.0) as rcon:
-        print("optimal region verification\n")
+        print("tessellate region verification\n")
 
         print("step 0: baseline, nothing forceloaded")
         rcon.command("execute in minecraft:overworld run forceload remove all")
-        rcon.command("optimal violations clear")
+        rcon.command("tessellate violations clear")
         out = wait_stable(rcon)
         base = overworld_from(out)
         print(f"    spawn-chunk baseline: {base.chunks} ticking chunk(s), "
@@ -129,12 +129,12 @@ def main():
         show(out)
 
         print("\nstep 4: ownership guard")
-        violations = rcon.command("optimal violations")
+        violations = rcon.command("tessellate violations")
         check("zero ownership violations", "no ownership violations" in violations,
               violations.strip().splitlines()[0] if violations.strip() else "empty")
 
         print("\nstep 5: incremental tracking and overhead")
-        state = overworld_from(rcon.command("optimal regions"))
+        state = overworld_from(rcon.command("tessellate regions"))
         print(f"    {state.chunks} ticking chunks")
         print(f"    steady-state per-tick update: {state.update_ms:.3f} ms "
               f"({100 * state.update_ms / 50.0:.3f}% of the 50 ms budget)")

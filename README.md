@@ -1,27 +1,27 @@
-# Optimal
+# Tessellate
 
-**Independent regional ticking for Minecraft 1.21.1 on NeoForge.** Optimal separates distant loaded
-areas so they can run on different CPU cores. If one area becomes too expensive, adaptive
-throttling can slow that area without slowing every player on the server.
+Tessellate is a NeoForge performance mod for Minecraft 1.21.1. It groups distant loaded areas into
+independent regions and lets those regions run on different CPU cores. If one region gets too
+expensive, Tessellate can slow it down without dragging the rest of the server with it.
 
-| Situation | What Optimal does |
+| Situation | What Tessellate does |
 | --- | --- |
 | Several distant bases are busy | Runs their regions concurrently |
 | One region exceeds the server budget | Reduces only that region's simulation rate |
 | Two regions become close enough to interact | Merges them before they tick |
 | A worker reaches unsafe shared state | Falls back to serial ticking for the session |
 
-Optimal does not split a single hot region into smaller tasks. Dense mobs, machines, pathfinding,
-and collisions inside one connected region still run as one unit. It also does not replace
-single-thread optimizers such as [Lithium](https://modrinth.com/mod/lithium); the two solve different
-problems.
+This works best when players or forced-loaded areas are spread out. One dense base, mob farm, or
+machine cluster is still one region, so Tessellate cannot split that work across several cores. It also
+doesn't replace single-thread optimizers such as [Lithium](https://modrinth.com/mod/lithium); the two
+solve different problems.
 
 ## Current benchmark
 
-The current code was tested in an ABBA sequence with a fresh server restart for every arm. The
-workload used four forced-loaded regions 2,048 blocks apart with exactly 1,200 persistent zombies in
-each region, or 4,800 total. Both modes used adaptive throttling and the same nine-mod runtime. Only
-`parallelTicking` changed.
+For the current benchmark, we ran an ABBA sequence and restarted the server before every arm. The
+test used four forced-loaded regions 2,048 blocks apart, each with exactly 1,200 persistent zombies
+(4,800 total). Both modes used adaptive throttling and the same nine-mod setup. The only setting we
+changed was `parallelTicking`.
 
 ```mermaid
 xychart-beta
@@ -31,9 +31,9 @@ xychart-beta
     bar [40.55, 15.75]
 ```
 
-**Parallel ticking reduced median MSPT by 61.2% and p95 MSPT by 62.5%.** Both parallel arms kept all
-four regions at 20 TPS. The serial arms kept zero and one region at 20 TPS because the adaptive
-budget had to slow sequential work.
+**Parallel ticking cut median MSPT by 61.2% and p95 MSPT by 62.5%.** All four regions held 20 TPS in
+both parallel runs. In the serial runs, the adaptive budget had to slow some regions because their
+work could only run one after another.
 
 | Mode, median of two arms | Median MSPT | Median p95 | Regions at 20 TPS | Slowest region |
 | --- | ---: | ---: | ---: | ---: |
@@ -58,7 +58,7 @@ budget had to slow sequential work.
 - Each arm discarded two 8-second warmup windows, then used the median of five 8-second samples.
 - `asyncRegionLoops=false` in both arms so `tick query` included the worker critical path. Shipping
   async mode does not join workers every tick, so its main-thread MSPT is not directly comparable.
-- `ItemEntity.Age`, a vanilla field outside Optimal, measured each region's effective TPS.
+- `ItemEntity.Age`, a vanilla field outside Tessellate, measured each region's effective TPS.
 - Every arm verified exact entity count, separate regions, correct execution mode, drained boundary
   queues, and zero boundary failures. Parallel arms also required worker overlap of at least two.
 
@@ -70,9 +70,9 @@ bash tools/ab_parallel.sh 4 1200
 
 </details>
 
-This is a synthetic multi-region result, not a universal speedup. One hot region cannot use another
-core under the current ownership model, and different entity or machine mixes will scale
-differently.
+This benchmark is deliberately built around several separate regions. It is not a promise of the
+same speedup on every server. One hot region still runs on one core, and different mixes of mobs,
+machines, and mods will behave differently.
 
 ---
 
@@ -90,29 +90,28 @@ flowchart LR
     Q --> N[Packets, lifecycle, saves]
 ```
 
-Region workers own local simulation. Effects that touch global Minecraft or mod state are queued
-and committed on the main thread after the source owner is safe.
+Each worker handles the local simulation for its region. Anything that touches shared Minecraft or
+mod state is queued and applied on the main thread once the region is safe.
 
 ### Regions
 
-The loaded world is cut into a fixed grid of **sections**, 4x4 chunks each. Sections that are
-entity-ticking and near each other are merged into one **region**, a connected component that is
-ticked as a unit.
+Tessellate divides the loaded world into **sections** of 4x4 chunks. Nearby entity-ticking sections are
+joined into a **region**, and that whole region ticks as one unit.
 
-Regions merge when they come within 2 sections of each other, which guarantees that two distinct
-regions are always at least 3 sections (192 blocks) apart. Nothing in one region can reach into
-another within a single tick, which is what makes them independent.
+With the default settings, regions merge when they come within 2 sections of each other. Two
+separate regions are therefore at least 3 sections (192 blocks) apart, far enough that one cannot
+reach the other during a single tick.
 
-Regions form and dissolve as chunks load and unload. `/optimal regions` shows the current map.
+The map updates as chunks load and unload. Run `/tessellate regions` to see it.
 
 ### Regional TPS: slicing, not skipping
 
-Each region's cost is measured every tick. When the server's tick is heading past its target, the
-most expensive region is given a **tick divisor**. At 1/4, its contents advance at 5 TPS while
-everything else stays at 20.
+Tessellate measures the cost of each region every tick. If the server is about to miss its tick-time
+target, the most expensive region gets a **tick divisor**. A divisor of 4 runs that region at 5 TPS
+while unaffected regions can stay at 20.
 
-The important detail is *how* that slowdown is delivered. The obvious implementation runs the whole
-region every fourth tick. That gives the right average and a terrible feel:
+Running the whole region once every fourth tick would produce the right average rate, but it feels
+awful in play:
 
 | | gated (all work every 4th tick) | sliced (1/4 of the work every tick) |
 | --- | --- | --- |
@@ -120,23 +119,22 @@ region every fourth tick. That gives the right average and a terrible feel:
 | MSPT, mean | 20.5 ms | 23.7 ms |
 | MSPT, **95th percentile** | **210.9 ms** | **32.9 ms** |
 
-Gating produced a 200 ms hitch every fourth tick. This caused visible stutter for *everyone* from the
-mechanism meant to prevent stutter. Slicing runs a quarter of the region's entities every tick
-instead. Each entity still advances at 5 TPS, but the cost is spread evenly.
+That gated version caused a 200 ms hitch every fourth tick, which made everyone stutter. Tessellate
+instead runs a quarter of the region's entities on every tick. Each entity still averages 5 TPS,
+but the work is spread out.
 
-Slice membership is keyed on entity ID and block position, so a given mob or hopper lands in the
-same slice every cycle rather than drifting between them.
+Entity IDs and block positions determine slice membership, so the same mob or hopper stays in the
+same slice each cycle.
 
-**When the throttle engages** is decided by the tick as a whole, not by a fixed budget. Everything
-that is not region work, including the chunk system, networking, and block entities outside regions, is
-overhead the regions cannot control, so their budget is whatever is left of `targetTickMillis`
-after paying it. On a server comfortably holding 20 TPS the remainder is large and nothing is
-throttled.
+The throttle looks at the whole tick before deciding whether to step in. Chunk work, networking,
+and block entities outside regions all consume time that regions cannot control, so the available
+region budget is whatever remains under `targetTickMillis`. If the server is comfortably holding
+20 TPS, nothing is throttled.
 
 ### Parallel region ticking
 
-Because regions cannot interact within a tick, they can be ticked on different threads. Doing so
-means making everything a region touches safe, which was most of the work:
+Separate regions cannot interact during a tick, which makes it possible to run them on different
+threads. The harder part is keeping every shared boundary safe:
 
 - **Entity storage is sharded by grid cell.** Vanilla keeps every entity section in one map plus
   one balanced tree. Sharding by *cell* rather than by region matters: a section key's coordinates
@@ -153,8 +151,7 @@ means making everything a region touches safe, which was most of the work:
   callbacks run on the owner worker; only successful event packets and positional sound/network
   effects are committed on the main thread.
 
-Each worker owns the region-scoped parts of the spatial envelope. The retained global mutations
-are explicit and measured:
+Most simulation stays on the region worker. Shared work crosses one of these measured boundaries:
 
 | boundary | region-worker work | main-thread commit or global barrier |
 | --- | --- | --- |
@@ -171,26 +168,25 @@ are explicit and measured:
 | explicit saves and shutdown | none | quiesce and drain before taking the global snapshot or closing storage |
 | topology merge/split | none while owners are active | wait affected owners, drain against old ownership, then replace the map |
 
-`/optimal phases` reports queued, replayed, direct, pending, elapsed main-thread time, failures,
+`/tessellate phases` reports queued, replayed, direct, pending, elapsed main-thread time, failures,
 balance, and the last source region for each boundary. The counters are bounded by boundary type;
 they do not retain an ever-growing region history.
 
-With `asyncRegionLoops=true`, a busy region keeps its ownership claim and misses only its own next
-slot; unrelated regions and the global server tick continue without a per-tick join. Targeted
-leases protect packets, commands, chunk topology, entity loading/unloading and saves.
+With `asyncRegionLoops=true`, a busy region keeps its ownership claim and only misses its own next
+slot. Other regions and the main server tick continue instead of waiting at a global barrier.
+Targeted leases protect packets, commands, chunk topology, entity loading and unloading, and saves.
 
-Optimal has no build, metadata, or class dependency on C2ME and runs this ownership path standalone.
-Vanilla serializes an owner-safe unload chunk on the main thread and writes it asynchronously. When
-C2ME is installed, it can additionally run `ChunkSerializer.write` for that unload snapshot on its
-workers. Loaded autosave serialization remains an idle-time main-thread slice in either case;
-Optimal prevents it from waiting on a busy region.
+Tessellate runs this ownership path without C2ME and has no build, metadata, or class dependency on it.
+Vanilla prepares a safe unload snapshot on the main thread and writes it asynchronously. If C2ME is
+installed, it can also run `ChunkSerializer.write` for that snapshot on its workers. Loaded
+autosaves are still serialized during an idle main-thread slice; they do not wait on a busy region.
 
 ### Validation coverage
 
 | Check | Result |
 | --- | --- |
 | JVM regression suite | 81 tests passed |
-| Optimal-only NeoForge GameTests | All 5 required tests passed without external mods |
+| Tessellate-only NeoForge GameTests | All 5 required tests passed without external mods |
 | Scheduled ticks | 30 minutes, 422 rebuild cycles, worker peak 5, no failure or queued work left |
 | Block events | 30 minutes, 1,001,984 callbacks, worker peak 4, packets stayed on main |
 | Natural spawning | Three parallel runs, worker overlap confirmed, global and local caps held |
@@ -198,29 +194,27 @@ Optimal prevents it from waiting on a busy region.
 | Full-mod save/unload | 1,200 entities survived a 49-chunk unload/reload exactly |
 | Main-thread boundaries | 8,519 deferred operations balanced with zero pending work |
 
-These checks cover the listed runtime and workloads. They cannot prove that arbitrary mod code is
-thread-safe; the serial fallback remains part of the design.
+These checks cover the workloads listed here, not every possible mod interaction. The serial
+fallback is still necessary because no test suite can prove that arbitrary mod code is thread-safe.
 
 ---
 
 ## The trade-off
 
-Read this before running it on a server people play on.
+Throttling has an intentional cost: when a region exceeds its share, **everything inside it runs
+slower**. Mobs move more slowly, farms produce less, and hoppers move fewer items. That is useful for
+containing a lag machine, but Tessellate cannot tell a lag machine from a legitimately busy base. It
+will slow either one.
 
-When a region exceeds its share, **its contents run slower**. Mobs move at reduced speed,
-farms produce less, hoppers move fewer items. That is the mechanism working as designed: a griefer's
-lag machine is *supposed* to be slowed. But the throttle cannot tell a lag machine from a
-legitimately busy base, and it will slow either.
-
-If you would rather the server dropped below 20 TPS than slow anyone's build down, set
-`regions.adaptiveThrottling = false`. Region tracking stays on and you keep the `/optimal regions`
+If you would rather let the whole server drop below 20 TPS than slow a player's build, set
+`regions.adaptiveThrottling = false`. Region tracking stays on and you keep the `/tessellate regions`
 diagnostics.
 
 ---
 
 ## Configuration
 
-`config/optimal-common.toml`.
+`config/tessellate-common.toml`.
 
 | option | default | what it does |
 | --- | --- | --- |
@@ -248,47 +242,47 @@ asyncRegionLoops = false
 
 ### Commands
 
-- `/optimal regions`: region map, per-region cost and tick rate, execution mode
-- `/optimal phases`: worker/main calls, time, overlap, lock wait, failures and deferred queue depth
-- `/optimal violations`: thread-ownership violations recorded (should be empty)
-- `/optimal visualize`: stable region map plus GPU-rendered perimeter curtains; `T#` is the
+- `/tessellate regions`: region map, per-region cost and tick rate, execution mode
+- `/tessellate phases`: worker/main calls, time, overlap, lock wait, failures and deferred queue depth
+- `/tessellate violations`: thread-ownership violations recorded (should be empty)
+- `/tessellate visualize`: stable region map plus GPU-rendered perimeter curtains; `T#` is the
   pooled worker that most recently ran the region
 
-When Lithium is installed, Optimal disables Lithium's `alloc.chunk_random` and
+When Lithium is installed, Tessellate disables Lithium's `alloc.chunk_random` and
 `entity.inactive_navigations` mixins through Lithium's supported mod override metadata. Both keep
-mutable state once per level; Optimal replaces the useful parts with worker-local random state and
+mutable state once per level; Tessellate replaces the useful parts with worker-local random state and
 an atomic path-type cache so the full chunk/path operation does not need a global monitor.
 
 ---
 
 ## Compatibility
 
-Tested compatible with independent region loops on:
+We tested independent region loops with:
 
 - NeoForge alone, no other mods
 - Lithium 0.15.4 + Mekanism 10.7.19.85 + Mekanism Generators 10.7.19.85 + Naturalist 2.0.3 +
   Citadel 2.7.1 + Friends & Foes 4.0.27 + Resourceful Lib 3.0.12 + ScalableLux 0.3.0-alpha.0.8
 - C2ME 0.4.0-alpha.0.120 with the full mod set above
 
-Verified across both: entity queries return byte-identical results with sharding on and off
-(0 differences across 25 spatial queries), block entities and scheduled ticks behave unchanged, and
-no thread-ownership violations or fallbacks to serial occurred. Vanilla and Naturalist retention
-probes pass, all six tested Generators blocks create block entities, and two real clients negotiate
-the optional visualizer payload while three regions run concurrently.
+Across these setups, entity queries returned byte-identical results with sharding on and off (0
+differences across 25 spatial queries). Block entities and scheduled ticks behaved the same, with
+no ownership violations or serial fallbacks. Vanilla and Naturalist retention probes passed, all
+six tested Generators blocks created block entities, and two real clients negotiated the optional
+visualizer payload while three regions ran concurrently.
 
-Lithium is handled explicitly. Its spawning optimization
-reads entity storage internals directly, and the sharded storage keeps that working. Region block
-entities can register Lithium world-border listeners concurrently, so that narrow registration
-method is serialized; this avoids racing Lithium's internal `WeakHashMap` without locking ticks.
+Lithium needs a little special handling because its spawning optimization reads entity storage
+internals directly. Tessellate's sharded storage preserves that path. Region block entities can also
+register Lithium world-border listeners concurrently, so Tessellate serializes that one registration
+method instead of locking whole ticks around Lithium's internal `WeakHashMap`.
 
 ---
 
 ## Limitations
 
-Stated plainly; the safe fallback reduces risk but cannot make unknown mods thread-safe.
+Tessellate protects the shared state it knows about, but it cannot make unknown mod code thread-safe.
 
-- **Arbitrary mods are not protected.** Four level-global containers reachable from an entity tick
-  have been found and fixed; a mod with its own such container would race the same way.
+- **Other mods can still introduce races.** Tessellate protects four level-global containers reachable
+  from entity ticks. A mod that keeps its own unsafe global state can still race.
 - **C2ME 0.4.0-alpha.0.120 has one test limitation.** Full live benchmarks, save/unload, restart,
   and shutdown pass with C2ME installed. Its natural-spawning GameTest fails in both serial and
   parallel regional modes, so that specific test is not counted as passing compatibility coverage.
@@ -306,5 +300,5 @@ python tools/bench_parallel.py --areas 4 --mobs 1200
 python tools/verify_blockevents.py --soak-seconds 1800
 ```
 
-The benchmark scripts read the RCON password from `OPTIMAL_RCON_PASSWORD`; use the same value for
+The benchmark scripts read the RCON password from `TESSELLATE_RCON_PASSWORD`; use the same value for
 `rcon.password` in the dev server's local `server.properties`.

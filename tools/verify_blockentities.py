@@ -80,7 +80,7 @@ def setup(rcon):
 
 def main():
     with Rcon(timeout=120.0) as rcon:
-        print("optimal region-scoped block entity verification\n")
+        print("tessellate region-scoped block entity verification\n")
         setup(rcon)
 
         print("step 0: build a hopper-into-chest in each region")
@@ -132,7 +132,7 @@ def main():
         print(f"    regions after bridging: {sorted(merged.keys())}")
 
         print("\nstep 4: ownership guard")
-        violations = rcon.command("optimal violations")
+        violations = rcon.command("tessellate violations")
         check("zero ownership violations", "no ownership violations" in violations,
               violations.strip().splitlines()[0] if violations.strip() else "empty")
 

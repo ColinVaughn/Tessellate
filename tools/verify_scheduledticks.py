@@ -114,7 +114,7 @@ def main():
                         help="rebuild and verify all banks for this many seconds")
     args = parser.parse_args()
     with Rcon(timeout=120.0) as rcon:
-        print("optimal region-scoped scheduled tick verification\n")
+        print("tessellate region-scoped scheduled tick verification\n")
         setup(rcon)
 
         ow = overworld(rcon)
@@ -165,7 +165,7 @@ def main():
                     break
                 if time.monotonic() >= next_report:
                     reports += 1
-                    phases = rcon.command("optimal phases")
+                    phases = rcon.command("tessellate phases")
                     healthy = ("parallel=true" in phases
                                and not re.search(r"failures [1-9]\d*", phases)
                                and "deferred queues: 0 pending" in phases)
@@ -177,7 +177,7 @@ def main():
 
         if not args.skip_concurrency:
             print("\nstep 3: block and fluid schedulers overlap across regions")
-            phases = rcon.command("optimal phases")
+            phases = rcon.command("tessellate phases")
             block_peak = phase_peak(phases, "scheduled-blocks")
             fluid_peak = phase_peak(phases, "scheduled-fluids")
             check("scheduled block ticks reached two workers", block_peak >= 2,
@@ -186,7 +186,7 @@ def main():
                   f"peak={fluid_peak}")
 
         print("\nstep 4: ownership guard")
-        violations = rcon.command("optimal violations")
+        violations = rcon.command("tessellate violations")
         check("zero ownership violations", "no ownership violations" in violations,
               violations.strip().splitlines()[0] if violations.strip() else "empty")
 

@@ -19,7 +19,7 @@ import time
 
 HOST = "127.0.0.1"
 PORT = 25585
-PASSWORD = os.environ.get("OPTIMAL_RCON_PASSWORD")
+PASSWORD = os.environ.get("TESSELLATE_RCON_PASSWORD")
 
 TYPE_LOGIN = 3
 TYPE_COMMAND = 2
@@ -48,7 +48,7 @@ class Rcon:
 
     def connect(self):
         if not self.password:
-            raise RconError("set OPTIMAL_RCON_PASSWORD or pass --password")
+            raise RconError("set TESSELLATE_RCON_PASSWORD or pass --password")
         self.sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
         self.sock.settimeout(self.timeout)
         request_id = self._send(TYPE_LOGIN, self.password)

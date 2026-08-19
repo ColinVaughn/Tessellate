@@ -120,10 +120,10 @@ def spawn_load(rcon, index, count):
 
 
 def count_zombies(rcon):
-    rcon.command("scoreboard objectives add optimalcount dummy")
-    rcon.command("execute in minecraft:overworld store result score #count optimalcount "
+    rcon.command("scoreboard objectives add tessellatecount dummy")
+    rcon.command("execute in minecraft:overworld store result score #count tessellatecount "
                  "if entity @e[type=minecraft:zombie]")
-    out = rcon.command("scoreboard players get #count optimalcount")
+    out = rcon.command("scoreboard players get #count tessellatecount")
     match = re.search(r"has (-?\d+) ", out)
     return int(match.group(1)) if match else -1
 
@@ -137,7 +137,7 @@ def tick_stats(rcon):
 
 
 def execution_mode(rcon):
-    out = rcon.command("optimal regions")
+    out = rcon.command("tessellate regions")
     match = re.search(r"execution: (.+)", out)
     return match.group(1).strip() if match else "unknown"
 
@@ -175,7 +175,7 @@ def main():
 
     with Rcon(timeout=600.0) as rcon:
         mode = execution_mode(rcon)
-        print(f"optimal parallel throughput benchmark\nexecution: {mode}\n")
+        print(f"tessellate parallel throughput benchmark\nexecution: {mode}\n")
 
         setup(rcon, args.areas)
         observers = [spawn_observer(rcon, i) for i in range(args.areas)]
@@ -225,7 +225,7 @@ def main():
         print(f"  global MSPT  {mean_mspt:.1f} ms mean, {p95_mspt:.1f} ms p95")
 
         print("\nregion map:")
-        for line in rcon.command("optimal regions").splitlines():
+        for line in rcon.command("tessellate regions").splitlines():
             if "region#" in line or "overworld" in line:
                 print(f"    {line.strip()}")
 
@@ -237,7 +237,7 @@ def main():
         print(f"  global MSPT:            {mean_mspt:.1f} ms")
 
         check("every area is a separate region",
-              len(re.findall(r"region#", rcon.command("optimal regions"))) >= args.areas,
+              len(re.findall(r"region#", rcon.command("tessellate regions"))) >= args.areas,
               "areas merged into fewer regions than expected")
         if args.require_budget:
             check("global MSPT stays inside the 50 ms tick budget", mean_mspt < 50.0,
@@ -246,7 +246,7 @@ def main():
         check("the entity load remained constant", final_zombies == expected_zombies,
               f"expected {expected_zombies}, found {final_zombies}")
 
-        phases = rcon.command("optimal phases")
+        phases = rcon.command("tessellate phases")
         entities = re.search(
             r"entities: worker (\d+)/.*main (\d+)/.*peak (\d+)", phases)
         worker_calls = int(entities.group(1)) if entities else -1

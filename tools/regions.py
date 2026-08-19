@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Parse `/optimal regions` output for the verification scripts.
+"""Parse `/tessellate regions` output for the verification scripts.
 
 The command returns one block per dimension followed by its regions:
 
@@ -156,14 +156,14 @@ def parse(text):
 
     if not dimensions:
         raise ParseError(
-            "no dimension block found in `/optimal regions` output. The command's format has "
+            "no dimension block found in `/tessellate regions` output. The command's format has "
             "probably changed and tools/regions.py needs updating. Output was:\n" + text)
     return dimensions
 
 
 def overworld(rcon):
     """Query and parse the overworld block."""
-    text = rcon.command("optimal regions")
+    text = rcon.command("tessellate regions")
     dims = parse(text)
     if "minecraft:overworld" not in dims:
         raise ParseError("no overworld in output:\n" + text)

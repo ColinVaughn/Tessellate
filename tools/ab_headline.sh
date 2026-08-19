@@ -21,9 +21,9 @@ cd "$(dirname "$0")/.."
 
 LAG_MOBS="${1:-3000}"
 REGION_MOBS="${2:-1200}"
-CONFIG="run/config/optimal-common.toml"
-LOG="/tmp/optimal-headline-arm.log"
-OUT="/tmp/optimal-headline.txt"
+CONFIG="run/config/tessellate-common.toml"
+LOG="/tmp/tessellate-headline-arm.log"
+OUT="/tmp/tessellate-headline.txt"
 
 export JAVA_HOME="${JAVA_HOME:-/c/Program Files/Eclipse Adoptium/jdk-21.0.10.7-hotspot}"
 : > "$OUT"

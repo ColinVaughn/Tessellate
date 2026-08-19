@@ -1,0 +1,44 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "org.texboobcat.tessellate.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ChunkMapMixin",
+    "ChunkMapInvoker",
+    "CommandsMixin",
+    "CollectingNeighborUpdaterAccessor",
+    "EntityCallbacksMixin",
+    "EntityMixin",
+    "EntityLookupMixin",
+    "EntitySectionMixin",
+    "EntitySectionStorageAccessor",
+    "LevelMixin",
+    "LevelTicksAccessor",
+    "LevelTicksMixin",
+    "PathNavigationPhaseMixin",
+    "MinecraftServerMixin",
+    "NaturalSpawnerMixin",
+    "NaturalSpawnerSpawnStateInvoker",
+    "NaturalSpawnerSpawnStateMixin",
+    "PacketUtilsMixin",
+    "PersistentEntityCallbackMixin",
+    "PersistentEntitySectionManagerAccessor",
+    "PersistentEntitySectionManagerMixin",
+    "RaidMixin",
+    "ServerChunkCacheMixin",
+    "ServerGamePacketListenerMixin",
+    "ServerLevelEntityManagerAccessor",
+    "ServerLevelMixin",
+    "WalkNodeEvaluatorInvoker",
+    "WorldBorderMixin"
+  ],
+  "client": [
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

@@ -135,7 +135,7 @@ def main():
     args = parser.parse_args()
 
     with Rcon(timeout=120.0) as rcon:
-        print("optimal region-owned block-event verification\n")
+        print("tessellate region-owned block-event verification\n")
         setup(rcon)
         world = overworld(rcon)
         ids = {name: world.region_near(*spot)[0] for name, _, spot in AREAS}
@@ -179,7 +179,7 @@ def main():
 
         print("\nstep 4: phase and ownership diagnostics")
         time.sleep(2.0)
-        phases = rcon.command("optimal phases")
+        phases = rcon.command("tessellate phases")
         event_worker, event_main, event_peak = phase(phases, "block-events")
         packet_worker, packet_main, _ = phase(phases, "block-event-packets")
         if not args.skip_concurrency:
@@ -196,7 +196,7 @@ def main():
         check("parallel worker system stayed healthy",
               "parallel=true" in phases and "unavailable chunks=0" in phases
               and not re.search(r"failures [1-9]\d*", phases))
-        violations = rcon.command("optimal violations")
+        violations = rcon.command("tessellate violations")
         check("zero ownership violations", "no ownership violations" in violations,
               violations.strip().splitlines()[0] if violations.strip() else "empty")
 

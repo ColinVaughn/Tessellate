@@ -25,7 +25,7 @@ displayName = "${mod_name}" #mandatory
 # A URL for the "homepage" for this mod, displayed in the mod UI
 #displayURL="https://change.me.to.your.mods.homepage.example.invalid/" #optional
 # A file name (in the root of the mod JAR) containing a logo for display
-#logoFile="optimal.png" #optional
+#logoFile="tessellate.png" #optional
 # A text field displayed in the mod UI
 #credits="" #optional
 # A text field displayed in the mod UI
@@ -38,7 +38,7 @@ description = '''${mod_description}'''
 [[mixins]]
 config = "${mod_id}.mixins.json"
 
-# These Lithium optimizations cache mutable state once per level. Optimal supplies a
+# These Lithium optimizations cache mutable state once per level. Tessellate supplies a
 # thread-local block-random sequence and a concurrent path cache instead.
 ["lithium:options"]
 "mixin.alloc.chunk_random" = false

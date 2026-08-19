@@ -81,7 +81,7 @@ def tick_stats(rcon):
 
 
 def server_state(rcon):
-    out = rcon.command("optimal regions")
+    out = rcon.command("tessellate regions")
     sharded = "shardEntityStorage=true" in out.replace(" ", "")
     shards = re.search(r"(\d+) shard\(s\)", out)
     throttled = re.search(r"1/([2-9]|\d\d+) rate", out) is not None

@@ -116,11 +116,11 @@ def spawn_lag_machine(rcon, count, lo, hi):
 
 def count_entities(rcon, entity_type):
     """Count matching entities without removing them."""
-    rcon.command("scoreboard objectives add optimalcount dummy")
+    rcon.command("scoreboard objectives add tessellatecount dummy")
     rcon.command(
-        f"execute in minecraft:overworld store result score #count optimalcount "
+        f"execute in minecraft:overworld store result score #count tessellatecount "
         f"if entity @e[type={entity_type}]")
-    out = rcon.command("scoreboard players get #count optimalcount")
+    out = rcon.command("scoreboard players get #count tessellatecount")
     match = re.search(r"has (-?\d+) ", out)
     return int(match.group(1)) if match else -1
 
@@ -159,7 +159,7 @@ def main():
     args = parser.parse_args()
 
     with Rcon(timeout=180.0) as rcon:
-        print("optimal regional isolation benchmark\n")
+        print("tessellate regional isolation benchmark\n")
 
         if not args.skip_setup:
             setup_world(rcon)
@@ -183,7 +183,7 @@ def main():
             load_a, load_c, load_elapsed, load_mspt = measure(rcon, a_pos, c_pos, args.window)
 
             print("\nregion map during load:")
-            for line in rcon.command("optimal regions").splitlines():
+            for line in rcon.command("tessellate regions").splitlines():
                 if "overworld" in line or "region#" in line:
                     print(f"    {line.strip()}")
 

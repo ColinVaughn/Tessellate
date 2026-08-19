@@ -16,9 +16,9 @@ cd "$(dirname "$0")/.."
 
 MOBS="${1:-1500}"
 SAMPLES="${2:-8}"
-CONFIG="run/config/optimal-common.toml"
-RESULTS="/tmp/optimal-storage-ab.json"
-LOG="/tmp/optimal-ab-arm.log"
+CONFIG="run/config/tessellate-common.toml"
+RESULTS="/tmp/tessellate-storage-ab.json"
+LOG="/tmp/tessellate-ab-arm.log"
 
 export JAVA_HOME="${JAVA_HOME:-/c/Program Files/Eclipse Adoptium/jdk-21.0.10.7-hotspot}"
 

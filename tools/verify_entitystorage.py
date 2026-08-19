@@ -97,10 +97,10 @@ def spawn_grid(rcon):
 
 def count(rcon, selector):
     """Count a selector without removing its entities."""
-    rcon.command("scoreboard objectives add optimalq dummy")
+    rcon.command("scoreboard objectives add tessellateq dummy")
     rcon.command(
-        f"execute in minecraft:overworld store result score #q optimalq if entity {selector}")
-    out = rcon.command("scoreboard players get #q optimalq")
+        f"execute in minecraft:overworld store result score #q tessellateq if entity {selector}")
+    out = rcon.command("scoreboard players get #q tessellateq")
     match = re.search(r"has (-?\d+) ", out)
     if not match:
         raise RuntimeError(f"could not count {selector}: {out}")
@@ -171,9 +171,9 @@ def main():
     args = parser.parse_args()
 
     with Rcon(timeout=180.0) as rcon:
-        print("optimal entity storage differential check\n")
+        print("tessellate entity storage differential check\n")
 
-        sharded = "shardEntityStorage=true" in rcon.command("optimal regions").replace(" ", "")
+        sharded = "shardEntityStorage=true" in rcon.command("tessellate regions").replace(" ", "")
         print(f"sharded storage reported by the server: {sharded}\n")
 
         if not args.skip_setup:

@@ -84,7 +84,7 @@ def spawn(rcon, index, count):
 
 def counters(rcon):
     """Return the server's deferred and replayed counts."""
-    out = rcon.command("optimal regions")
+    out = rcon.command("tessellate regions")
     match = re.search(
         r"deferred to main thread: (\d+)/(\d+) entity callback\(s\), "
         r"(\d+)/(\d+) level write\(s\)", out)
@@ -94,17 +94,17 @@ def counters(rcon):
 
 
 def execution_mode(rcon):
-    out = rcon.command("optimal regions")
+    out = rcon.command("tessellate regions")
     found = re.search(r"execution: (.+)", out)
     return found.group(1).strip() if found else "unknown"
 
 
 def count_entities(rcon, entity_type):
-    rcon.command("scoreboard objectives add optimaldw dummy")
+    rcon.command("scoreboard objectives add tessellatedw dummy")
     rcon.command(
-        f"execute in minecraft:overworld store result score #c optimaldw "
+        f"execute in minecraft:overworld store result score #c tessellatedw "
         f"if entity @e[type={entity_type}]")
-    out = rcon.command("scoreboard players get #c optimaldw")
+    out = rcon.command("scoreboard players get #c tessellatedw")
     match = re.search(r"has (-?\d+) ", out)
     return int(match.group(1)) if match else -1
 
@@ -117,7 +117,7 @@ def main():
 
     with Rcon(timeout=600.0) as rcon:
         mode = execution_mode(rcon)
-        print(f"optimal deferred-write check\nexecution: {mode}\n")
+        print(f"tessellate deferred-write check\nexecution: {mode}\n")
 
         for rule, value in [
             ("doMobSpawning", "false"),
@@ -167,7 +167,7 @@ def main():
         check("every deferred entity callback was replayed", after[0] == after[1],
               f"replayed {after[0]}, deferred {after[1]}")
 
-        violations = rcon.command("optimal violations")
+        violations = rcon.command("tessellate violations")
         check("zero ownership violations", "no ownership violations" in violations,
               violations.strip().splitlines()[-1] if violations.strip() else "")
 

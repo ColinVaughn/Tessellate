@@ -75,7 +75,7 @@ def summon(rcon, count, x, z, spread=8):
 
 def main():
     with Rcon(timeout=120.0) as rcon:
-        print("optimal per-region entity verification\n")
+        print("tessellate per-region entity verification\n")
         setup(rcon)
 
         print("step 0: regions established, no entities")
@@ -172,7 +172,7 @@ def main():
               f"{tps:.1f} TPS")
 
         print("\nstep 6: ownership guard")
-        violations = rcon.command("optimal violations")
+        violations = rcon.command("tessellate violations")
         check("zero ownership violations", "no ownership violations" in violations,
               violations.strip().splitlines()[0] if violations.strip() else "empty")
 

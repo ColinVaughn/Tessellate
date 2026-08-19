@@ -15,9 +15,9 @@ cd "$(dirname "$0")/.."
 
 AREAS="${1:-4}"
 MOBS="${2:-1200}"
-CONFIG="run/config/optimal-common.toml"
-RESULTS="/tmp/optimal-parallel-ab.json"
-LOG="/tmp/optimal-parallel-arm.log"
+CONFIG="run/config/tessellate-common.toml"
+RESULTS="/tmp/tessellate-parallel-ab.json"
+LOG="/tmp/tessellate-parallel-arm.log"
 
 export JAVA_HOME="${JAVA_HOME:-/c/Program Files/Eclipse Adoptium/jdk-21.0.10.7-hotspot}"
 
@@ -76,7 +76,7 @@ run_arm() {  # label parallel_value
 
     # A silent fall back to serial would make the parallel arm a second serial arm.
     echo "--- final execution mode ---"
-    python tools/rcon.py "optimal regions" 2>/dev/null | sed -n '2,3p'
+    python tools/rcon.py "tessellate regions" 2>/dev/null | sed -n '2,3p'
     grep -cE "ConcurrentModification|DEGRADED" "$LOG" | sed 's/^/crash-or-degrade lines: /'
 }
 

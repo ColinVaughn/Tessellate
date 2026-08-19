@@ -22,7 +22,7 @@ AREA_ORIGIN = (512, 512)
 HALF = 14
 FLOOR_Y = 3
 SPAWN_Y = 5
-TEST_TAG = "optimal_modded"
+TEST_TAG = "tessellate_modded"
 
 # Chosen to exercise different tick paths: land AI, water AI, flying AI, and swarms.
 CANDIDATE_MOBS = [
@@ -156,18 +156,18 @@ def spawn(rcon, index, mobs, count):
 
 
 def count_entities(rcon, selector):
-    rcon.command("scoreboard objectives add optimalmod dummy")
+    rcon.command("scoreboard objectives add tessellatemod dummy")
     # Unknown registry ids fail before storing a result, so reset the score first.
-    rcon.command("scoreboard players set #m optimalmod 0")
+    rcon.command("scoreboard players set #m tessellatemod 0")
     rcon.command(
-        f"execute in minecraft:overworld store result score #m optimalmod if entity {selector}")
-    out = rcon.command("scoreboard players get #m optimalmod")
+        f"execute in minecraft:overworld store result score #m tessellatemod if entity {selector}")
+    out = rcon.command("scoreboard players get #m tessellatemod")
     match = re.search(r"has (-?\d+) ", out)
     return int(match.group(1)) if match else -1
 
 
 def status(rcon):
-    out = rcon.command("optimal regions")
+    out = rcon.command("tessellate regions")
     mode = re.search(r"execution: (.+)", out)
     counters = re.search(
         r"deferred to main thread: (\d+)/(\d+) entity callback\(s\), (\d+)/(\d+) level write", out)
@@ -177,7 +177,7 @@ def status(rcon):
 
 def dispatched_regions(rcon):
     """Return the number of regions dispatched on the last tick."""
-    out = rcon.command("optimal regions")
+    out = rcon.command("tessellate regions")
     overworld = out.split("minecraft:overworld", 1)
     if len(overworld) < 2:
         return 0
@@ -193,7 +193,7 @@ def main():
 
     with Rcon(timeout=600.0) as rcon:
         mode, before = status(rcon)
-        print(f"optimal modded compatibility check\nexecution: {mode}\n")
+        print(f"tessellate modded compatibility check\nexecution: {mode}\n")
 
         for rule, value in [
             ("doMobSpawning", "false"), ("doDaylightCycle", "false"),
@@ -264,7 +264,7 @@ def main():
         check("every deferred level write was replayed", after[2] == after[3],
               f"replayed {after[2]}, deferred {after[3]}")
 
-        violations = rcon.command("optimal violations")
+        violations = rcon.command("tessellate violations")
         check("zero ownership violations", "no ownership violations" in violations,
               violations.strip().splitlines()[-1] if violations.strip() else "")
 
