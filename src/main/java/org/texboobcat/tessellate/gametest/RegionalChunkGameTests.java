@@ -72,6 +72,10 @@ public final class RegionalChunkGameTests {
         entity.setPos(start.getX() + 0.5, start.getY(), start.getZ() + 0.5);
         level.addFreshEntity(entity);
 
+        Entity spawned = EntityType.ARMOR_STAND.create(level);
+        helper.assertTrue(spawned != null, "could not create worker-spawned entity");
+        spawned.setPos(start.getX() + 1.5, start.getY(), start.getZ() + 0.5);
+
         double targetX = entity.getX() + 2.0;
         String source = MainThreadBoundaries.source(index.levelKey(), region.id());
         MainThreadBoundaries.Snapshot before = MainThreadBoundaries.snapshot(
@@ -84,15 +88,20 @@ public final class RegionalChunkGameTests {
                 RegionThreadContext.exit();
             }
         };
-        RegionWorkers.runAllAndWait(List.of(teleport, () -> { }));
+        Runnable spawn = () -> level.addFreshEntity(spawned);
+        RegionWorkers.runAllAndWait(List.of(teleport, spawn));
 
         helper.assertTrue(entity.getX() != targetX,
             "worker teleport became visible before its main-thread commit");
+        helper.assertTrue(level.getEntity(spawned.getUUID()) == null,
+            "worker entity insertion became visible before its main-thread commit");
         RegionTracker.quiesceAndDrain();
         MainThreadBoundaries.Snapshot after = MainThreadBoundaries.snapshot(
             MainThreadBoundaries.Boundary.TELEPORT_DIMENSION);
         helper.assertTrue(entity.getX() == targetX,
             "main-thread barrier did not replay the worker teleport");
+        helper.assertTrue(level.getEntity(spawned.getUUID()) == spawned,
+            "main-thread barrier did not replay the worker entity insertion");
         helper.assertTrue(after.queued() == before.queued() + 1
                 && after.replayed() == before.replayed() + 1
                 && after.pending() == before.pending() && after.balanced(),
@@ -100,6 +109,7 @@ public final class RegionalChunkGameTests {
         helper.assertTrue(source.equals(after.lastSource()),
             "teleport boundary lost its source region: " + after.lastSource());
         entity.discard();
+        spawned.discard();
         helper.succeed();
     }
 

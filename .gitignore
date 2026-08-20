@@ -29,3 +29,5 @@ __pycache__/
 # VSCode / Eclipse compiled output
 .vscode/
 bin/
+
+synaptic-out

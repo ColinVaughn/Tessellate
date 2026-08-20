@@ -209,7 +209,9 @@ public abstract class ServerLevelMixin {
     }
 
     // Keeps NeoForge's entity-join event and level-global entity indexes on the main thread.
-    @Inject(method = "addEntity", at = @At("HEAD"), cancellable = true)
+    // Run before off-thread diagnostics such as Cupboard's, which otherwise cancel this method
+    // before Tessellate can hand the insertion to its main-thread lifecycle queue.
+    @Inject(method = "addEntity", at = @At("HEAD"), cancellable = true, order = 900)
     private void tessellate$deferEntityAddOffThread(Entity entity,
                                                   CallbackInfoReturnable<Boolean> cir) {
         ServerLevel self = (ServerLevel) (Object) this;
