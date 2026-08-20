@@ -1,10 +1,14 @@
 # Tessellate
 
-Tessellate is a NeoForge performance mod for Minecraft 1.21.1. It groups distant loaded areas into
+Tessellate is a Fabric and NeoForge performance mod for Minecraft 1.21.1. It groups distant loaded areas into
 independent regions and lets those regions run on different CPU cores. If one region gets too
 expensive, Tessellate can slow it down without dragging the rest of the server with it.
 
 Support and discussion: [join the Tessellate Discord](https://discord.gg/dPY6zmHtr5).
+
+## Downloads
+
+Download Tessellate from [CurseForge](https://www.curseforge.com/minecraft/mc-mods/tessellate).
 
 | Situation | What Tessellate does |
 | --- | --- |
