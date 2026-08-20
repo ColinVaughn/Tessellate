@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Build and test
+        run: bash ./gradlew build runGameTestServer --no-daemon --stacktrace
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mapfile -t artifacts < <(find fabric/build/libs neoforge/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-dev-shadow.jar' ! -name '*-sources.jar')
+          test "${#artifacts[@]}" -eq 2
+          gh release create "$GITHUB_REF_NAME" "${artifacts[@]}" --verify-tag --generate-notes --title "$GITHUB_REF_NAME"

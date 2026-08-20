@@ -1,21 +1,40 @@
-name: Java CI
+name: CI
 
 on:
   push:
+    branches: [master]
   pull_request:
+    branches: [master]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  check:
+  verify:
+    name: Build and GameTest
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
-          cache: gradle
-      - name: Build, test, and audit complexity
-        run: bash ./gradlew check --no-daemon
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Build and test
+        run: bash ./gradlew build runGameTestServer --no-daemon --stacktrace
+      - name: Upload failure reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-reports
+          path: |
+            **/build/reports/**
+            run/gametest/logs/**
+          if-no-files-found: ignore
+          retention-days: 7
