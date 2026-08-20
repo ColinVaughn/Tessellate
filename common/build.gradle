@@ -1,0 +1,15 @@
+architectury {
+    common(rootProject.enabled_platforms.split(','))
+}
+
+loom.runs.clear()
+
+tasks.matching { it.name == 'runClient' || it.name == 'runServer' }.configureEach {
+    enabled = false
+}
+
+dependencies {
+    modImplementation "net.fabricmc:fabric-loader:${rootProject.fabric_loader_version}"
+    modImplementation "dev.architectury:architectury:${rootProject.architectury_api_version}"
+    compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
+}

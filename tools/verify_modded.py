@@ -221,8 +221,11 @@ def main():
         else:
             skip("modded mob AI on a region worker",
                  "no installed modded entity survived the probe; check the server spawn flags")
-        check("found modded block entities to test with", bool(blocks),
-              ", ".join(blocks) if blocks else "no modded machines available")
+        if blocks:
+            check("found modded block entities to test with", True, ", ".join(blocks))
+        else:
+            skip("modded block entities on region workers",
+                 "no supported ticking block entity is installed in this compatibility set")
         if not mobs:
             return 1
 

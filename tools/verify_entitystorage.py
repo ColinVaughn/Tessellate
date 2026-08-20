@@ -90,7 +90,7 @@ def spawn_grid(rcon):
             rcon.command(
                 f"execute in minecraft:overworld run summon minecraft:item {x} {SPAWN_Y} {z} "
                 '{Item:{id:"minecraft:diamond",Count:1b},Age:-30000s,PickupDelay:32767s,'
-                'NoGravity:1b}')
+                'NoGravity:1b,Motion:[0.0d,0.0d,0.0d]}')
     time.sleep(1.5)
     return total
 

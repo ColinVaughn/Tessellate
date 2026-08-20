@@ -1,11 +1,17 @@
 pluginManagement {
     repositories {
         mavenLocal()
+        maven { url = 'https://maven.fabricmc.net/' }
+        maven { url = 'https://maven.architectury.dev/' }
+        maven { url = 'https://maven.neoforged.net/releases/' }
         gradlePluginPortal()
-        maven { url = 'https://maven.neoforged.net/releases' }
     }
 }
 
 plugins {
     id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
 }
+
+rootProject.name = 'tessellate'
+
+include 'common', 'fabric', 'neoforge'

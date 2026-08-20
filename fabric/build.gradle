@@ -1,0 +1,98 @@
+plugins {
+    id 'com.github.johnrengelman.shadow'
+}
+
+architectury {
+    platformSetupLoomIde()
+    fabric()
+}
+
+loom {
+    runs {
+        removeAll { it.name == 'client' || it.name == 'server' }
+        fabricClient {
+            client()
+            runDir '../run-fabric-client'
+            programArgs '--username', 'FabricDev', '--quickPlayMultiplayer', '127.0.0.1:25565'
+        }
+        fabricClient2 {
+            client()
+            runDir '../run-fabric-client-2'
+            programArgs '--username', 'FabricDev2', '--quickPlayMultiplayer', '127.0.0.1:25565'
+        }
+        fabricServer {
+            server()
+            runDir '../run-fabric'
+        }
+        fabricGameTest {
+            server()
+            runDir '../run-fabric-gametest'
+            vmArg '-Dfabric-api.gametest'
+            vmArg "-Dfabric-api.gametest.report-file=${layout.buildDirectory.get()}/fabric-gametest.xml"
+        }
+    }
+}
+
+tasks.matching { it.name == 'runClient' || it.name == 'runServer' }.configureEach {
+    enabled = false
+}
+
+configurations {
+    common {
+        canBeResolved = true
+        canBeConsumed = false
+    }
+    compileClasspath.extendsFrom common
+    runtimeClasspath.extendsFrom common
+    developmentFabric.extendsFrom common
+    shadowBundle {
+        canBeResolved = true
+        canBeConsumed = false
+    }
+}
+
+dependencies {
+    modImplementation "net.fabricmc:fabric-loader:${rootProject.fabric_loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${rootProject.fabric_api_version}"
+    modImplementation "dev.architectury:architectury-fabric:${rootProject.architectury_api_version}"
+    implementation(include("com.electronwill.night-config:core:3.8.3"))
+    implementation(include("com.electronwill.night-config:toml:3.8.3"))
+
+    common(project(path: ':common', configuration: 'namedElements')) { transitive false }
+    shadowBundle(project(path: ':common', configuration: 'transformProductionFabric')) { transitive false }
+    testImplementation(project(path: ':common', configuration: 'namedElements')) { transitive false }
+}
+
+def generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
+    def replaceProperties = [minecraft_version       : rootProject.minecraft_version,
+                             mod_id                  : rootProject.mod_id,
+                             mod_name                : rootProject.mod_name,
+                             mod_license             : rootProject.mod_license,
+                             mod_version             : rootProject.mod_version,
+                             architectury_api_version: rootProject.architectury_api_version,
+                             fabric_loader_version   : rootProject.fabric_loader_version,
+                             fabric_api_version      : rootProject.fabric_api_version,
+                             mod_authors             : rootProject.mod_authors,
+                             mod_description         : rootProject.mod_description]
+    inputs.properties replaceProperties
+    expand replaceProperties
+    from 'src/main/templates'
+    into layout.buildDirectory.dir('generated/sources/modMetadata')
+}
+
+sourceSets.main.resources.srcDir generateModMetadata
+
+shadowJar {
+    configurations = [project.configurations.shadowBundle]
+    archiveClassifier = 'dev-shadow'
+}
+
+remapJar {
+    inputFile.set shadowJar.archiveFile
+    dependsOn shadowJar
+    archiveClassifier = null
+}
+
+jar {
+    archiveClassifier = 'dev'
+}
