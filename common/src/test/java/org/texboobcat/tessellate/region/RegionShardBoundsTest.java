@@ -107,4 +107,18 @@ class RegionShardBoundsTest {
         assertEquals(5, RegionShardBounds.cellCoord(5, 0));
         assertEquals(-3, RegionShardBounds.cellCoord(-3, 0));
     }
+
+    @Test
+    void clippedQueryExpandsBackToExactlyOneShard() {
+        for (int cell = -3; cell <= 3; cell++) {
+            int firstSection = cell << SHIFT;
+            int lastSection = ((cell + 1) << SHIFT) - 1;
+            assertEquals(firstSection, RegionShardBounds.sectionCoord(
+                RegionShardBounds.minQueryBlock(cell, SHIFT)
+                    - RegionShardBounds.HORIZONTAL_MARGIN));
+            assertEquals(lastSection, RegionShardBounds.sectionCoord(
+                RegionShardBounds.maxQueryBlock(cell, SHIFT)
+                    + RegionShardBounds.HORIZONTAL_MARGIN));
+        }
+    }
 }

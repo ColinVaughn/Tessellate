@@ -41,11 +41,13 @@ config = "${mod_id}.mixins.json"
 [[mixins]]
 config = "${mod_id}.neoforge.mixins.json"
 
-# These Lithium optimizations cache mutable state once per level. Tessellate supplies a
-# thread-local block-random sequence and a concurrent path cache instead.
+# These Lithium optimizations cache mutable state shared by independent region threads.
+# Tessellate supplies safe replacements where needed; entity block caching falls back to
+# Lithium's regular collision path.
 ["lithium:options"]
 "mixin.alloc.chunk_random" = false
 "mixin.entity.inactive_navigations" = false
+"mixin.experimental.entity.block_caching" = false
 
 # The coremods config file path is not configurable and is always loaded from META-INF/coremods.json
 

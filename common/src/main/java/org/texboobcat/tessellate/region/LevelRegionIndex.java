@@ -1140,15 +1140,16 @@ public final class LevelRegionIndex implements RegionizerListener {
         tickers.removeIf(this::removeTickerIfRemoved);
 
         Map<Integer, List<TickingBlockEntity>> grouped = new HashMap<>();
+        int orphanCount = groupBlockEntityTickers(tickers, grouped);
+        // Keep the previous counts until grouping has sized this tick's fresh lists. The lists and
+        // map are never mutated after publication, so copying them again would only add garbage.
         for (RegionTickState state : this.states.values()) {
             state.reportBlockEntityCount(0);
         }
-        int orphanCount = groupBlockEntityTickers(tickers, grouped);
-        grouped.replaceAll((ignored, values) -> List.copyOf(values));
         reportBlockEntityCounts(grouped);
         this.lastBlockEntityGroupNanos = System.nanoTime() - start;
         this.orphanBlockEntityCount = orphanCount;
-        return Map.copyOf(grouped);
+        return grouped;
     }
 
     private boolean removeTickerIfRemoved(TickingBlockEntity ticker) {
@@ -1171,16 +1172,29 @@ public final class LevelRegionIndex implements RegionizerListener {
                 if (pos == null) {
                     reportUnplaceableTicker(ticker);
                 }
-                grouped.computeIfAbsent(-1, ignored -> new ArrayList<>()).add(ticker);
+                blockEntityGroup(grouped, -1).add(ticker);
                 orphanCount++;
                 continue;
             }
-            RegionRun run = runFor(region);
-            if (run.includes(pos.hashCode())) {
-                grouped.computeIfAbsent(region.id(), ignored -> new ArrayList<>()).add(ticker);
+            if (region.memberInSlice(pos.hashCode(), region.sliceOn(this.serverTick))) {
+                blockEntityGroup(grouped, region.id()).add(ticker);
             }
         }
         return orphanCount;
+    }
+
+    private List<TickingBlockEntity> blockEntityGroup(
+            Map<Integer, List<TickingBlockEntity>> grouped, int regionId) {
+        List<TickingBlockEntity> group = grouped.get(regionId);
+        if (group != null) {
+            return group;
+        }
+        RegionTickState state = this.states.get(regionId);
+        int previousSize = regionId < 0 ? this.orphanBlockEntityCount
+            : state == null ? 0 : state.blockEntityCount();
+        group = new ArrayList<>(previousSize);
+        grouped.put(regionId, group);
+        return group;
     }
 
     private void reportBlockEntityCounts(Map<Integer, List<TickingBlockEntity>> grouped) {

@@ -334,7 +334,21 @@ public final class RegionShardedEntityStorage<T extends EntityAccess> extends En
                 if (shard == null) {
                     continue;
                 }
-                shard.forEachAccessibleNonEmptySection(boundingBox, tracker);
+                // Limit the traversal, not the entity filter: the caller's consumer still holds
+                // the original box. Besides avoiding repeated out-of-shard AVL walks, this lets
+                // Lithium's direct-section path see the shard-sized range it can optimize.
+                AABB shardBox = new AABB(
+                    Math.max(boundingBox.minX,
+                        RegionShardBounds.minQueryBlock(cellX, this.sectionShift)),
+                    boundingBox.minY,
+                    Math.max(boundingBox.minZ,
+                        RegionShardBounds.minQueryBlock(cellZ, this.sectionShift)),
+                    Math.min(boundingBox.maxX,
+                        RegionShardBounds.maxQueryBlock(cellX, this.sectionShift)),
+                    boundingBox.maxY,
+                    Math.min(boundingBox.maxZ,
+                        RegionShardBounds.maxQueryBlock(cellZ, this.sectionShift)));
+                shard.forEachAccessibleNonEmptySection(shardBox, tracker);
                 if (tracker.aborted) {
                     return;
                 }

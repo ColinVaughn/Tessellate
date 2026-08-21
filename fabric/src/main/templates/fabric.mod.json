@@ -34,7 +34,8 @@
   "custom": {
     "lithium:options": {
       "mixin.alloc.chunk_random": false,
-      "mixin.entity.inactive_navigations": false
+      "mixin.entity.inactive_navigations": false,
+      "mixin.experimental.entity.block_caching": false
     }
   }
 }

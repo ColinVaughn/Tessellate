@@ -50,7 +50,8 @@ public abstract class ChunkMapMixin {
     @Inject(method = "saveChunkIfNeeded", at = @At("HEAD"), cancellable = true)
     private void tessellate$deferBusyAutosave(ChunkHolder holder,
                                             CallbackInfoReturnable<Boolean> cir) {
-        if (!Config.asyncRegionLoops || RegionWorkers.isWorkerThread()) {
+        if (!Config.asyncRegionLoops || RegionWorkers.isWorkerThread()
+            || !RegionWorkers.anyTaskInFlight()) {
             return;
         }
         LevelRegionIndex index = RegionTracker.index(this.level);
