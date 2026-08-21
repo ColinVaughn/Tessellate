@@ -492,6 +492,8 @@ public final class LevelRegionIndex implements RegionizerListener {
                                       RegionalChunkWork chunkWork, Runnable eventDrain) {
         tickUnownedRegionWork(drains, chunkWork, eventDrain);
         chunkWork.finishGlobal().run();
+        this.drainDeferredCallbacks();
+        DeferredMainThreadWork.drain();
 
         List<Entity> orphanSnapshot = tickEntityPhase && this.orphans.entityCount() > 0
             ? new ArrayList<>(this.orphans.snapshot())
@@ -510,8 +512,6 @@ public final class LevelRegionIndex implements RegionizerListener {
 
         submitClaimedRegions(claims.regions(), drains, blockEntities, entityConsumer,
             tickEntityPhase, levelAccess, chunkWork, eventDrain);
-        this.drainDeferredCallbacks();
-        DeferredMainThreadWork.drain();
     }
 
     private Claims claimRegions(List<Region> regions, boolean tickEntityPhase) {
