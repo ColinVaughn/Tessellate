@@ -41,4 +41,14 @@ public final class RegionShardBounds {
         return cellCoord(sectionCoord(blockMax + HORIZONTAL_MARGIN), sectionShift);
     }
 
+    // Bounds for a box handed to one shard. EntitySectionStorage expands them by the margin
+    // again, producing exactly this cell's first and last section.
+    public static double minQueryBlock(int cell, int sectionShift) {
+        return ((long) cell << (sectionShift + 4)) + HORIZONTAL_MARGIN;
+    }
+
+    public static double maxQueryBlock(int cell, int sectionShift) {
+        return Math.nextDown((((long) cell + 1L) << (sectionShift + 4)) - HORIZONTAL_MARGIN);
+    }
+
 }

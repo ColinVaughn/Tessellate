@@ -237,7 +237,7 @@ def main():
         print(f"  global MSPT:            {mean_mspt:.1f} ms")
 
         check("every area is a separate region",
-              len(re.findall(r"region#", rcon.command("tessellate regions"))) >= args.areas,
+              len(re.findall(r"region#", rcon.command("tessellate regions verbose"))) >= args.areas,
               "areas merged into fewer regions than expected")
         if args.require_budget:
             check("global MSPT stays inside the 50 ms tick budget", mean_mspt < 50.0,

@@ -254,10 +254,11 @@ asyncRegionLoops = false
 - `/tessellate visualize`: stable region map plus GPU-rendered perimeter curtains; `T#` is the
   pooled worker that most recently ran the region
 
-When Lithium is installed, Tessellate disables Lithium's `alloc.chunk_random` and
-`entity.inactive_navigations` mixins through Lithium's supported mod override metadata. Both keep
-mutable state once per level; Tessellate replaces the useful parts with worker-local random state and
-an atomic path-type cache so the full chunk/path operation does not need a global monitor.
+When Lithium is installed, Tessellate disables Lithium's `alloc.chunk_random`,
+`entity.inactive_navigations`, and experimental `entity.block_caching` mixins through Lithium's
+supported mod override metadata. They keep mutable state shared by independent region threads;
+Tessellate supplies worker-local random state and an atomic path-type cache, while entity block
+caching falls back to Lithium's regular collision path.
 
 ---
 

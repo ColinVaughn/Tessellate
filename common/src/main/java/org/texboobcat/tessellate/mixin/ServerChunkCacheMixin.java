@@ -1,6 +1,8 @@
 package org.texboobcat.tessellate.mixin;
 
 import com.mojang.logging.LogUtils;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.Util;
 import net.minecraft.server.level.ChunkHolder;
 import net.minecraft.server.level.ChunkMap;
@@ -38,11 +40,9 @@ import org.texboobcat.tessellate.region.RegionWorkers;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
-import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
 import javax.annotation.Nullable;
@@ -118,7 +118,7 @@ public abstract class ServerChunkCacheMixin implements LevelRegionIndex.Regional
             && this.level.tickRateManager().runsNormally();
         Map<Integer, List<LevelChunk>> regional = new HashMap<>();
         List<LevelChunk> unowned = new ArrayList<>();
-        Set<Long> eligibleChunks = new HashSet<>();
+        LongSet eligibleChunks = new LongOpenHashSet();
         if (!this.level.isDebug()) {
             tessellate$collectTickingChunks(index, regional, unowned, eligibleChunks,
                 chunksRunNormally);
@@ -174,7 +174,7 @@ public abstract class ServerChunkCacheMixin implements LevelRegionIndex.Regional
     @Unique
     private void tessellate$collectTickingChunks(LevelRegionIndex index,
             Map<Integer, List<LevelChunk>> regional, List<LevelChunk> unowned,
-            Set<Long> eligibleChunks, boolean chunksRunNormally) {
+            LongSet eligibleChunks, boolean chunksRunNormally) {
         for (ChunkHolder holder : ((ChunkMapInvoker) this.chunkMap).tessellate$getChunks()) {
             LevelChunk chunk = holder.getTickingChunk();
             if (chunk == null) {
@@ -247,7 +247,7 @@ public abstract class ServerChunkCacheMixin implements LevelRegionIndex.Regional
     private void tessellate$tickChunkList(List<LevelChunk> source,
                                         LevelRegionIndex.RegionRun run,
                                         NaturalSpawner.SpawnState spawnState,
-                                        Set<Long> eligibleChunks, long inhabitedDelta,
+                                        LongSet eligibleChunks, long inhabitedDelta,
                                         boolean chunksRunNormally, int randomTickSpeed,
                                         boolean periodicSpawnTick, boolean spawnMobs) {
         if (!chunksRunNormally || source.isEmpty()) {
@@ -268,9 +268,12 @@ public abstract class ServerChunkCacheMixin implements LevelRegionIndex.Regional
     @Unique
     private List<LevelChunk> tessellate$filterTickChunks(List<LevelChunk> source,
                                                        @Nullable LevelRegionIndex.RegionRun run) {
+        if (run == null || run.slice() < 0) {
+            return source;
+        }
         List<LevelChunk> chunks = new ArrayList<>(source.size());
         for (LevelChunk chunk : source) {
-            if (run == null || run.includes(Long.hashCode(chunk.getPos().toLong()))) {
+            if (run.includes(Long.hashCode(chunk.getPos().toLong()))) {
                 chunks.add(chunk);
             }
         }
@@ -279,7 +282,7 @@ public abstract class ServerChunkCacheMixin implements LevelRegionIndex.Regional
 
     @Unique
     private void tessellate$tickChunk(LevelChunk chunk, NaturalSpawner.SpawnState spawnState,
-            Set<Long> eligibleChunks, long inhabitedDelta, int randomTickSpeed,
+            LongSet eligibleChunks, long inhabitedDelta, int randomTickSpeed,
             boolean periodicSpawnTick, boolean spawnMobs, boolean mobSpawning) {
         ChunkPos pos = chunk.getPos();
         if (!eligibleChunks.contains(pos.toLong())) {
@@ -314,7 +317,7 @@ public abstract class ServerChunkCacheMixin implements LevelRegionIndex.Regional
     private boolean tessellate$runParallelNaturalSpawning(LevelRegionIndex index,
             Map<Integer, List<LevelChunk>> regional, List<LevelChunk> unowned,
             NaturalSpawner.SpawnState spawnState, ParallelNaturalSpawner.State parallelState,
-            Set<Long> eligibleChunks, boolean periodicSpawnTick) {
+            LongSet eligibleChunks, boolean periodicSpawnTick) {
         Queue<Throwable> failures = new ConcurrentLinkedQueue<>();
         List<Runnable> tasks = new ArrayList<>();
         tessellate$addSpawnTasks(index, regional, spawnState, parallelState, eligibleChunks,
@@ -331,7 +334,7 @@ public abstract class ServerChunkCacheMixin implements LevelRegionIndex.Regional
     @Unique
     private void tessellate$addSpawnTasks(LevelRegionIndex index,
             Map<Integer, List<LevelChunk>> regional, NaturalSpawner.SpawnState spawnState,
-            ParallelNaturalSpawner.State parallelState, Set<Long> eligibleChunks,
+            ParallelNaturalSpawner.State parallelState, LongSet eligibleChunks,
             boolean periodicSpawnTick, Queue<Throwable> failures, List<Runnable> tasks) {
         for (Region region : index.regionizer().regions()) {
             if (!index.regionIdle(region.id())) {
@@ -371,7 +374,7 @@ public abstract class ServerChunkCacheMixin implements LevelRegionIndex.Regional
     @Unique
     private void tessellate$spawnUnowned(List<LevelChunk> unowned,
             NaturalSpawner.SpawnState spawnState, ParallelNaturalSpawner.State parallelState,
-            Set<Long> eligibleChunks, boolean periodicSpawnTick, Queue<Throwable> failures) {
+            LongSet eligibleChunks, boolean periodicSpawnTick, Queue<Throwable> failures) {
         try {
             for (LevelChunk chunk : tessellate$spawnChunks(unowned, null, -1, eligibleChunks)) {
                 tessellate$spawnForChunkParallel(chunk, spawnState, parallelState,
@@ -401,7 +404,7 @@ public abstract class ServerChunkCacheMixin implements LevelRegionIndex.Regional
     @Unique
     private List<LevelChunk> tessellate$spawnChunks(List<LevelChunk> source,
                                                   @Nullable Region region, int slice,
-                                                  Set<Long> eligibleChunks) {
+                                                  LongSet eligibleChunks) {
         List<LevelChunk> chunks = new ArrayList<>(source.size());
         for (LevelChunk chunk : source) {
             ChunkPos pos = chunk.getPos();
@@ -428,7 +431,7 @@ public abstract class ServerChunkCacheMixin implements LevelRegionIndex.Regional
     @Unique
     private void tessellate$finishChunkFallback(Map<Integer, List<LevelChunk>> regional,
             List<LevelChunk> unowned, LevelRegionIndex index,
-            NaturalSpawner.SpawnState spawnState, Set<Long> eligibleChunks,
+            NaturalSpawner.SpawnState spawnState, LongSet eligibleChunks,
             long inhabitedDelta, int randomTickSpeed, boolean periodicSpawnTick,
             boolean spawnMobs) {
         for (Region region : index.regionizer().regions()) {
