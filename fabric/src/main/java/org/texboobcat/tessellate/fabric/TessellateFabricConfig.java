@@ -2,6 +2,9 @@ package org.texboobcat.tessellate.fabric;
 
 import com.electronwill.nightconfig.core.file.CommentedFileConfig;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.resources.ResourceLocation;
+
+import java.util.List;
 
 public final class TessellateFabricConfig {
 
@@ -44,6 +47,8 @@ public final class TessellateFabricConfig {
             bool(config, "regions.asyncRegionLoops", true),
             integer(config, "regions.workerThreads", 0, 0, 64),
             bool(config, "regions.threadLocalRandom", true),
+            strings(config, "compatibility.mainThreadEntities",
+                org.texboobcat.tessellate.Config.DEFAULT_MAIN_THREAD_ENTITIES),
             bool(config, "guard.diagnoseEntitySectionRaces", false),
             bool(config, "guard.strict", false),
             bool(config, "guard.logRegionChanges", false));
@@ -73,6 +78,20 @@ public final class TessellateFabricConfig {
         Object raw = config.getOptional(path).orElse(defaultValue);
         double number = raw instanceof Number numeric ? numeric.doubleValue() : Double.NaN;
         double value = Double.isFinite(number) ? Math.max(min, Math.min(max, number)) : defaultValue;
+        config.set(path, value);
+        return value;
+    }
+
+    private static List<String> strings(com.electronwill.nightconfig.core.Config config,
+                                        String path, List<String> defaultValue) {
+        Object raw = config.getOptional(path).orElse(defaultValue);
+        List<String> value = raw instanceof List<?> list
+            ? list.stream()
+                .filter(String.class::isInstance)
+                .map(String.class::cast)
+                .filter(id -> ResourceLocation.tryParse(id) != null)
+                .toList()
+            : defaultValue;
         config.set(path, value);
         return value;
     }

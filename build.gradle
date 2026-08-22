@@ -69,6 +69,8 @@ subprojects {
 
     tasks.named('test', Test) {
         useJUnitPlatform()
+        workingDir = layout.buildDirectory.dir('test-run').get().asFile
+        doFirst { getWorkingDir().mkdirs() }
         testLogging {
             events 'passed', 'failed', 'skipped'
             exceptionFormat 'full'

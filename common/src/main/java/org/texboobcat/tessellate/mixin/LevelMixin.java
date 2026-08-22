@@ -24,7 +24,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import org.texboobcat.tessellate.Config;
 import org.texboobcat.tessellate.PlatformHooks;
+import org.texboobcat.tessellate.api.TessellateApi;
 import org.texboobcat.tessellate.region.DeferredMainThreadWork;
+import org.texboobcat.tessellate.region.CompatibilityTicks;
 import org.texboobcat.tessellate.region.LevelRegionIndex;
 import org.texboobcat.tessellate.region.MainThreadBoundaries;
 import org.texboobcat.tessellate.region.PhaseStats;
@@ -262,7 +264,7 @@ public abstract class LevelMixin implements LevelRegionIndex.RegionalLevelAccess
                 boolean eligible = !ticker.isRemoved() && runsNormally && pos != null
                     && self.shouldTickBlocksAt(pos);
                 if (eligible) {
-                    ticker.tick();
+                    tessellate$tickBlockEntity(self, ticker, pos);
                 }
             }
         } catch (Throwable failure) {
@@ -273,6 +275,22 @@ public abstract class LevelMixin implements LevelRegionIndex.RegionalLevelAccess
             if (region != null) {
                 region.recordBlockEntityTick(System.nanoTime() - start);
             }
+        }
+    }
+
+    @Unique
+    private static void tessellate$tickBlockEntity(Level level, TickingBlockEntity ticker,
+                                                   BlockPos pos) {
+        if (TessellateApi.hasMainThreadBlockEntityTypes()) {
+            BlockEntity blockEntity = level.getBlockEntity(pos);
+            if (blockEntity != null && CompatibilityTicks.deferBlockEntity(
+                    blockEntity.getType(), () -> tessellate$tickBlockEntity(level, ticker, pos))) {
+                return;
+            }
+        }
+        if (!ticker.isRemoved() && level.tickRateManager().runsNormally()
+            && level.shouldTickBlocksAt(pos)) {
+            ticker.tick();
         }
     }
 

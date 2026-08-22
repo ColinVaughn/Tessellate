@@ -257,16 +257,7 @@ public final class RegionShardedEntityStorage<T extends EntityAccess> extends En
         }
     }
 
-    // Drops a shard once its last section is gone.
-    //
-    // Not just housekeeping. Sections are created and then removed as a player explores, so
-    // without this the map accumulates one empty shard per area ever visited, and every full scan
-    // pays for them, including the mob-cap count that walks all sections once per tick.
-    //
-    // Safe under the same ownership rule the rest of the design rests on: only the thread that
-    // owns a cell touches that cell's shard, so nothing can be inserting into this shard while it
-    // is being dropped. Readers are unaffected either way, because they hold a snapshot of the map
-    // and would simply see an empty shard.
+    // Remove empty shards so exploration does not leave permanent scan overhead.
     private void dropEmptyShard(long cell, EntitySectionStorage<T> shard) {
         synchronized (this.shardLock) {
             EntitySectionStorage<T> current = this.shards.get(cell);

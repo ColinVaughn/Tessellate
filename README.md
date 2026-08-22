@@ -238,6 +238,7 @@ diagnostics.
 | `regions.asyncRegionLoops` | `true` | independent per-region loops without a per-tick barrier |
 | `regions.scopedScheduledTicks` | `true` | region-own block/fluid schedulers; false uses one serial fallback child |
 | `regions.scopedBlockEvents` | `true` | region-own block-event callbacks; false uses the serial fallback queue |
+| `compatibility.mainThreadEntities` | `["creaturefeature:toadstool"]` | entity types forced onto the main thread until their mods adopt the compatibility API |
 
 To return to serial regional ticking while diagnosing a mod conflict:
 
@@ -263,6 +264,56 @@ caching falls back to Lithium's regular collision path.
 ---
 
 ## Compatibility
+
+Mods whose entity tick touches main-thread-only state can opt that entity type out of region workers
+during mod initialization:
+
+```java
+TessellateApi.registerMainThreadEntity(MyEntityTypes.MY_ENTITY.get());
+```
+
+Tessellate will tick those entities on the server thread. Registration is process-wide and
+idempotent; register only the affected types so other entities retain parallel ticking. Tessellate
+waits for all active regions before replaying a whole entity tick because its interaction range is
+unknown. Block entities have the same safety fallback:
+
+```java
+TessellateApi.registerMainThreadBlockEntity(MyBlockEntityTypes.MACHINE.get());
+```
+
+If only one operation is unsafe, keep the entity tick parallel and hand off just that operation:
+
+```java
+TessellateApi.executeOnMainThread(() -> updateMainThreadOnlyState());
+```
+
+Calls are always queued and return before the operation runs, so code after this call cannot depend
+on its result.
+
+World access should stay on the region that owns its position. Owner-local calls run immediately;
+cross-region and external-thread calls are queued for the current owner:
+
+```java
+TessellateApi.executeOnRegion(level, machinePos, () -> {
+    BlockEntity blockEntity = level.getBlockEntity(machinePos);
+    if (blockEntity instanceof MyMachine machine) {
+        machine.acceptTransfer(amount);
+    }
+});
+```
+
+Use `TessellateApi.ownsCurrentRegion(level, pos)` to select an owner-local fast path, or
+`requireCurrentRegion(level, pos)` as a development assertion. `isRegionThread()` reports whether
+the current call has a Tessellate region ownership scope; it does not mistake an unrelated async
+thread for the server thread.
+
+Main-thread code that touches a known world position should use the positional overload. It leases
+the target owner before running while unrelated regions continue:
+
+```java
+TessellateApi.executeOnMainThread(level, machinePos,
+    () -> updateMainThreadOnlyWorldState(level, machinePos));
+```
 
 We tested independent region loops with:
 
