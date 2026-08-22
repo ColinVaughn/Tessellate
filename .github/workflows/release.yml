@@ -19,6 +19,15 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v6
+      - name: Verify release version
+        shell: bash
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          mod_version="$(sed -n 's/^mod_version=//p' gradle.properties)"
+          test "$tag_version" = "$mod_version" || {
+            echo "::error::Tag $GITHUB_REF_NAME does not match mod_version=$mod_version"
+            exit 1
+          }
       - name: Build and test
         run: bash ./gradlew build runGameTestServer --no-daemon --stacktrace
       - name: Create GitHub release
