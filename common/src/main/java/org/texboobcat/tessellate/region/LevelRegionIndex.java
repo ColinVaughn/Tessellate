@@ -10,8 +10,11 @@ import it.unimi.dsi.fastutil.objects.Reference2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.entity.TickingBlockEntity;
 import net.minecraft.world.level.chunk.ChunkAccess;
@@ -76,6 +79,10 @@ public final class LevelRegionIndex implements RegionizerListener {
     }
 
     private static final Logger LOGGER = LogUtils.getLogger();
+    private static final EntityType<?> CREATURE_FEATURE_TOADSTOOL =
+        BuiltInRegistries.ENTITY_TYPE.getOptional(
+            ResourceLocation.fromNamespaceAndPath("creaturefeature", "toadstool"))
+            .orElse(null);
 
     private final ServerLevel level;
     private final String levelKey;
@@ -485,6 +492,16 @@ public final class LevelRegionIndex implements RegionizerListener {
         });
     }
 
+    private static void tickEntity(Entity entity, Consumer<Entity> consumer) {
+        // Toadstool creates a Sable sub-level, whose chunk holders are main-thread-only.
+        if (entity.getType() == CREATURE_FEATURE_TOADSTOOL && RegionWorkers.isWorkerThread()) {
+            DeferredMainThreadWork.defer(MainThreadBoundaries.Boundary.ENTITY_LIFECYCLE,
+                () -> consumer.accept(entity));
+            return;
+        }
+        consumer.accept(entity);
+    }
+
     private void tickFullRegionsAsync(List<Region> regions, List<ScheduledDrain> drains,
                                       Map<Integer, List<TickingBlockEntity>> blockEntities,
                                       Consumer<Entity> entityConsumer, boolean tickEntityPhase,
@@ -629,7 +646,7 @@ public final class LevelRegionIndex implements RegionizerListener {
                 PhaseStats.measure(PhaseStats.Phase.ENTITIES, () -> {
                     for (Entity entity : state.currentSnapshot()) {
                         if (run.includes(entity.getId())) {
-                            entityConsumer.accept(entity);
+                            tickEntity(entity, entityConsumer);
                         }
                     }
                 });
@@ -685,7 +702,7 @@ public final class LevelRegionIndex implements RegionizerListener {
                     if (slice >= 0 && !region.memberInSlice(entity.getId(), slice)) {
                         continue;
                     }
-                    consumer.accept(entity);
+                    tickEntity(entity, consumer);
                 }
             });
         } finally {
