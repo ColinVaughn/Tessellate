@@ -22,6 +22,11 @@ public final class RegionalChunkGameTests {
         RegionalChunkGameTestCases.mainThreadBoundaryHandoffs(helper);
     }
 
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE, timeoutTicks = 200)
+    public void compatibilityApiRunsOnLiveOwners(GameTestHelper helper) {
+        RegionalChunkGameTestCases.compatibilityApiRunsOnLiveOwners(helper);
+    }
+
     @GameTest(template = FabricGameTest.EMPTY_STRUCTURE, timeoutTicks = 4800, skyAccess = true)
     public void regionalChunkTicksAndNaturalSpawning(GameTestHelper helper) {
         RegionalChunkGameTestCases.regionalChunkTicksAndNaturalSpawning(

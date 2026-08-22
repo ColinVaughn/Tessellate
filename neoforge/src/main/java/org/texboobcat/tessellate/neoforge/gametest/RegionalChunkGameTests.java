@@ -29,6 +29,11 @@ public final class RegionalChunkGameTests {
         RegionalChunkGameTestCases.mainThreadBoundaryHandoffs(helper);
     }
 
+    @GameTest(template = "bastion/blocks/air", timeoutTicks = 200)
+    public static void compatibilityApiRunsOnLiveOwners(GameTestHelper helper) {
+        RegionalChunkGameTestCases.compatibilityApiRunsOnLiveOwners(helper);
+    }
+
     @GameTest(template = "bastion/blocks/air", timeoutTicks = 4800, skyAccess = true)
     public static void regionalChunkTicksAndNaturalSpawning(GameTestHelper helper) {
         RegionalChunkGameTestCases.regionalChunkTicksAndNaturalSpawning(

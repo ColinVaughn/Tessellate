@@ -18,6 +18,8 @@ class TessellateFabricConfigTest {
         input.set("regions.mergeRadius", -2L);
         input.set("regions.targetTickMillis", 100.0);
         input.set("regions.workerThreads", -1L);
+        input.set("compatibility.mainThreadEntities",
+            java.util.List.of("minecraft:allay", "not an id", 42));
 
         Config.Values values = TessellateFabricConfig.read(input);
 
@@ -26,6 +28,9 @@ class TessellateFabricConfigTest {
         assertEquals(1, values.mergeRadius());
         assertEquals(50.0, values.targetTickMillis());
         assertEquals(0, values.workerThreads());
+        assertEquals(java.util.List.of("minecraft:allay"), values.mainThreadEntities());
+        assertEquals(java.util.List.of("minecraft:allay"),
+            input.get("compatibility.mainThreadEntities"));
         assertFalse(values.strictGuard());
         assertEquals(false, input.get("guard.strict"));
         assertEquals(25.0, input.get("regions.budgetMillis"));

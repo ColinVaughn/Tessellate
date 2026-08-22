@@ -3,6 +3,8 @@ package org.texboobcat.tessellate.gametest;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -14,6 +16,7 @@ import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FarmBlock;
 import net.minecraft.world.level.block.entity.BellBlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
 import net.minecraft.world.level.pathfinder.PathType;
@@ -22,6 +25,7 @@ import net.minecraft.world.ticks.ScheduledTick;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.entity.monster.Monster;
 import org.texboobcat.tessellate.Config;
+import org.texboobcat.tessellate.api.TessellateApi;
 import org.texboobcat.tessellate.region.RegionTracker;
 import org.texboobcat.tessellate.region.PhaseStats;
 import org.texboobcat.tessellate.region.ParallelNaturalSpawner;
@@ -37,6 +41,7 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
 
 // Checks the vanilla systems moved into the regional chunk task.
@@ -125,6 +130,106 @@ public final class RegionalChunkGameTestCases {
         entity.discard();
         spawned.discard();
         helper.succeed();
+    }
+
+    public static void compatibilityApiRunsOnLiveOwners(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        LevelRegionIndex index = RegionTracker.index(level);
+        BlockPos regionPos = helper.absolutePos(new BlockPos(1, 2, 1));
+        BlockPos mainPos = regionPos.east();
+        BlockPos beaconPos = regionPos.south();
+        helper.assertTrue(index != null, "test level has no region index");
+        index.leaseChunk(net.minecraft.world.level.ChunkPos.asLong(regionPos));
+        Region region = index.regionForChunk(new net.minecraft.world.level.ChunkPos(regionPos));
+        helper.assertTrue(region != null, "test chunk has no region owner");
+
+        AtomicBoolean regionExecuted = new AtomicBoolean();
+        AtomicBoolean regionOwned = new AtomicBoolean();
+        AtomicBoolean mainExecuted = new AtomicBoolean();
+        AtomicBoolean mainThread = new AtomicBoolean();
+        AtomicBoolean entityExecuted = new AtomicBoolean();
+        AtomicBoolean entityMainThread = new AtomicBoolean();
+        MainThreadBoundaries.Snapshot[] blockEntityBefore = new MainThreadBoundaries.Snapshot[1];
+
+        TessellateApi.executeOnRegion(level, regionPos, () -> {
+            regionOwned.set(TessellateApi.isRegionThread()
+                && TessellateApi.ownsCurrentRegion(level, regionPos));
+            level.setBlockAndUpdate(regionPos, Blocks.EMERALD_BLOCK.defaultBlockState());
+            regionExecuted.set(true);
+        });
+
+        helper.startSequence()
+            .thenExecuteAfter(5, () -> {
+                helper.assertTrue(regionExecuted.get() && regionOwned.get(),
+                    "executeOnRegion ran without the target ownership scope");
+                helper.assertTrue(level.getBlockState(regionPos).is(Blocks.EMERALD_BLOCK),
+                    "executeOnRegion did not apply its world mutation");
+
+                Runnable queueMain = () -> {
+                    RegionThreadContext.enter(region, index.levelKey());
+                    try {
+                        TessellateApi.executeOnMainThread(level, mainPos, () -> {
+                            mainThread.set(level.getServer().isSameThread());
+                            level.setBlockAndUpdate(mainPos, Blocks.GOLD_BLOCK.defaultBlockState());
+                            mainExecuted.set(true);
+                        });
+                    } finally {
+                        RegionThreadContext.exit();
+                    }
+                };
+                RegionWorkers.runAllAndWait(List.of(queueMain, () -> { }));
+                helper.assertTrue(!mainExecuted.get(),
+                    "executeOnMainThread ran synchronously on a worker");
+                RegionTracker.quiesceAndDrain();
+                helper.assertTrue(mainExecuted.get() && mainThread.get(),
+                    "positional main-thread work did not replay on the server thread");
+                helper.assertTrue(level.getBlockState(mainPos).is(Blocks.GOLD_BLOCK),
+                    "positional main-thread work did not apply its world mutation");
+
+                blockEntityBefore[0] = MainThreadBoundaries.snapshot(
+                    MainThreadBoundaries.Boundary.MOD_COMPATIBILITY);
+                TessellateApi.registerMainThreadBlockEntity(BlockEntityType.BEACON);
+                level.setBlockAndUpdate(beaconPos, Blocks.BEACON.defaultBlockState());
+            })
+            .thenExecuteAfter(10, () -> {
+                MainThreadBoundaries.Snapshot current = MainThreadBoundaries.snapshot(
+                    MainThreadBoundaries.Boundary.MOD_COMPATIBILITY);
+                helper.assertTrue(current.queued() > blockEntityBefore[0].queued()
+                        && current.replayed() > blockEntityBefore[0].replayed(),
+                    "registered beacon ticker did not cross the compatibility boundary");
+            })
+            .thenExecute(() -> {
+                level.removeBlock(beaconPos, false);
+                TessellateApi.registerMainThreadEntity(EntityType.MARKER);
+                Entity probe = new Entity(EntityType.MARKER, level) {
+                    @Override
+                    protected void defineSynchedData(SynchedEntityData.Builder builder) {
+                    }
+
+                    @Override
+                    protected void readAdditionalSaveData(CompoundTag tag) {
+                    }
+
+                    @Override
+                    protected void addAdditionalSaveData(CompoundTag tag) {
+                    }
+
+                    @Override
+                    public void tick() {
+                        entityMainThread.set(level.getServer().isSameThread());
+                        entityExecuted.set(true);
+                        discard();
+                    }
+                };
+                probe.setPos(regionPos.getX() + 0.5, regionPos.getY() + 1.0,
+                    regionPos.getZ() + 0.5);
+                helper.assertTrue(level.addFreshEntity(probe),
+                    "could not add compatibility API entity probe");
+            })
+            .thenExecuteAfter(10, () -> helper.assertTrue(
+                entityExecuted.get() && entityMainThread.get(),
+                "registered entity did not tick on the server thread"))
+            .thenSucceed();
     }
 
     @SuppressWarnings({"removal", "PMD.CognitiveComplexity"})

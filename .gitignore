@@ -6,6 +6,7 @@
 
 # Gradle build folder
 build
+.architectury-transformer/
 
 # IntelliJ
 out/

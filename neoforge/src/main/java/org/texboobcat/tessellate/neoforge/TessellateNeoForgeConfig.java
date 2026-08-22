@@ -205,6 +205,16 @@ public final class TessellateNeoForgeConfig {
             "Required for parallelTicking; harmless without it.")
         .define("regions.threadLocalRandom", true);
 
+    private static final ModConfigSpec.ConfigValue<java.util.List<? extends String>>
+            MAIN_THREAD_ENTITIES = BUILDER
+        .comment(
+            "Entity type IDs that must tick on the main thread for compatibility with mods",
+            "that have not adopted Tessellate's API. Example: creaturefeature:toadstool")
+        .defineListAllowEmpty("compatibility.mainThreadEntities",
+            Config.DEFAULT_MAIN_THREAD_ENTITIES, () -> "minecraft:pig",
+            value -> value instanceof String string
+                && net.minecraft.resources.ResourceLocation.tryParse(string) != null);
+
     private static final ModConfigSpec.BooleanValue DIAGNOSE_ENTITY_SECTION_RACES = BUILDER
         .comment(
             "Report the main-thread call sites that mutate entity storage while a region worker",
@@ -237,7 +247,8 @@ public final class TessellateNeoForgeConfig {
             MAX_TICK_DIVISOR.get(), SHARD_ENTITY_STORAGE.get(), ASSERT_SHARD_OWNERSHIP.get(),
             PARALLEL_TICKING.get(), DIRECT_WORKER_CHUNK_READS.get(),
             PARALLEL_NATURAL_SPAWNING.get(), ASYNC_REGION_LOOPS.get(), WORKER_THREADS.get(),
-            THREAD_LOCAL_RANDOM.get(), DIAGNOSE_ENTITY_SECTION_RACES.get(), STRICT_GUARD.get(),
+            THREAD_LOCAL_RANDOM.get(), MAIN_THREAD_ENTITIES.get().stream().map(String::valueOf).toList(),
+            DIAGNOSE_ENTITY_SECTION_RACES.get(), STRICT_GUARD.get(),
             LOG_REGION_CHANGES.get()));
     }
 }

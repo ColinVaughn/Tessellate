@@ -4,27 +4,15 @@ import java.util.ArrayDeque;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-// Work a region worker tried to do to level-global state, replayed on the main thread.
-//
-// Companion to DeferredEntityCallbacks, for the writes that do not arrive through the
-// entity callbacks. Ticking an entity can schedule a block tick by stepping on farmland or
-// displacing water. It can also raise a block event. Cross-owner scheduled ticks and block events
-// are handed to their destination region through this boundary.
-//
-// Deliberately global rather than per level. The queued work already knows which level it
-// belongs to, because it captures the container it was called on, so a per-level queue would only
-// add a lookup on the path that defers. Draining is main-thread-only and happens at the head of
-// every level tick, so at most one tick of latency is introduced.
-//
-// Latency is the visible cost: a block tick scheduled from a worker starts counting down one
-// tick later than it would have. That is the same order of imprecision the regional tick model
-// already introduces, and far cheaper than the alternative of making both containers concurrent.
+// Replays worker writes to level-global state on the main thread. Global compatibility tasks wait
+// for all region work; region-scoped tasks wait only for their owner.
 public final class DeferredMainThreadWork {
 
     private record Deferred(MainThreadBoundaries.Boundary boundary, String levelKey,
-                            int regionId, String source, Runnable work) {
+                            int regionId, String source, Runnable work, boolean global) {
         boolean ready() {
-            return this.levelKey == null || RegionTracker.regionIdle(this.levelKey, this.regionId);
+            return (!this.global || !RegionWorkers.anyTaskInFlight())
+                && (this.levelKey == null || RegionTracker.regionIdle(this.levelKey, this.regionId));
         }
     }
 
@@ -36,6 +24,8 @@ public final class DeferredMainThreadWork {
     private static final java.util.concurrent.atomic.AtomicInteger OUTSTANDING =
         new java.util.concurrent.atomic.AtomicInteger();
     private static final java.util.concurrent.atomic.AtomicInteger PEAK_OUTSTANDING =
+        new java.util.concurrent.atomic.AtomicInteger();
+    private static final java.util.concurrent.atomic.AtomicInteger GLOBAL_OUTSTANDING =
         new java.util.concurrent.atomic.AtomicInteger();
 
     // Main thread only.
@@ -49,13 +39,22 @@ public final class DeferredMainThreadWork {
     }
 
     public static void defer(MainThreadBoundaries.Boundary boundary, Runnable work) {
+        defer(boundary, work, false);
+    }
+
+    public static void deferGlobal(MainThreadBoundaries.Boundary boundary, Runnable work) {
+        defer(boundary, work, true);
+    }
+
+    private static void defer(MainThreadBoundaries.Boundary boundary, Runnable work,
+                              boolean global) {
         org.texboobcat.tessellate.guard.RegionThreadContext.Binding binding =
             org.texboobcat.tessellate.guard.RegionThreadContext.currentBinding();
         String levelKey = binding == null ? null : binding.levelKey();
         int regionId = binding == null ? -1 : binding.region().id();
         enqueue(boundary, levelKey, regionId,
             binding == null ? "global/main"
-                : MainThreadBoundaries.source(levelKey, regionId), work);
+                : MainThreadBoundaries.source(levelKey, regionId), work, global);
     }
 
     public static void deferForRegion(String levelKey, int regionId, Runnable work) {
@@ -66,14 +65,17 @@ public final class DeferredMainThreadWork {
     public static void deferForRegion(MainThreadBoundaries.Boundary boundary, String levelKey,
                                       int regionId, Runnable work) {
         enqueue(boundary, levelKey, regionId,
-            MainThreadBoundaries.source(levelKey, regionId), work);
+            MainThreadBoundaries.source(levelKey, regionId), work, false);
     }
 
     private static void enqueue(MainThreadBoundaries.Boundary boundary, String levelKey,
-                                int regionId, String source, Runnable work) {
+                                int regionId, String source, Runnable work, boolean global) {
         int outstanding = OUTSTANDING.incrementAndGet();
         PEAK_OUTSTANDING.accumulateAndGet(outstanding, Math::max);
-        PENDING.add(new Deferred(boundary, levelKey, regionId, source, work));
+        PENDING.add(new Deferred(boundary, levelKey, regionId, source, work, global));
+        if (global) {
+            GLOBAL_OUTSTANDING.incrementAndGet();
+        }
         DEFERRED.increment();
         MainThreadBoundaries.queued(boundary, source);
     }
@@ -101,6 +103,10 @@ public final class DeferredMainThreadWork {
         if (PENDING.isEmpty()) {
             return;
         }
+        if (GLOBAL_OUTSTANDING.get() > 0 && !RegionWorkers.isWorkerThread()
+            && RegionWorkers.anyTaskInFlight()) {
+            RegionWorkers.awaitIdle();
+        }
         Queue<Deferred> batch = new ArrayDeque<>();
         Deferred item;
         while ((item = PENDING.poll()) != null) {
@@ -119,6 +125,9 @@ public final class DeferredMainThreadWork {
                 replayed++;
             } finally {
                 OUTSTANDING.decrementAndGet();
+                if (item.global()) {
+                    GLOBAL_OUTSTANDING.decrementAndGet();
+                }
             }
         }
     }
@@ -129,5 +138,6 @@ public final class DeferredMainThreadWork {
         replayed = 0;
         OUTSTANDING.set(0);
         PEAK_OUTSTANDING.set(0);
+        GLOBAL_OUTSTANDING.set(0);
     }
 }

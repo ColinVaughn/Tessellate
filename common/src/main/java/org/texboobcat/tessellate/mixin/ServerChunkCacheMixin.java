@@ -47,21 +47,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
 import javax.annotation.Nullable;
 
-// Regional chunk/spawn ticking plus non-blocking chunk reads for region worker threads.
-//
-// Vanilla's getChunk sends any off-main-thread request to mainThreadProcessor
-// and blocks on the result. That is fatal here twice over: every region worker would serialize
-// through the main thread, destroying the parallelism, and while the main thread is waiting on a
-// region barrier there is nobody left to drain that queue, so the whole server deadlocks.
-//
-// Workers therefore read straight from ChunkMap.visibleChunkMap, which is a volatile
-// field replaced wholesale rather than mutated, so another thread always observes a consistent
-// snapshot. getChunkIfPresent returns what is already loaded without ever scheduling work.
-//
-// If the chunk is not already available the worker cannot obtain it without blocking, so it
-// gives up rather than deadlocking: the miss is recorded and the coordinator falls back to serial
-// ticking from the next tick. The compatibility contract preserves correctness by retreating to
-// the single-threaded path instead of risking a hung server.
+// Region workers read loaded chunks from ChunkMap's volatile snapshot because vanilla getChunk
+// blocks on the main thread. A miss records the unavailable chunk and triggers serial fallback.
 @Mixin(ServerChunkCache.class)
 public abstract class ServerChunkCacheMixin implements LevelRegionIndex.RegionalChunkAccess {
 

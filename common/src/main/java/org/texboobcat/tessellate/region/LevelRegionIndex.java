@@ -10,11 +10,8 @@ import it.unimi.dsi.fastutil.objects.Reference2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.entity.TickingBlockEntity;
 import net.minecraft.world.level.chunk.ChunkAccess;
@@ -79,10 +76,6 @@ public final class LevelRegionIndex implements RegionizerListener {
     }
 
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final EntityType<?> CREATURE_FEATURE_TOADSTOOL =
-        BuiltInRegistries.ENTITY_TYPE.getOptional(
-            ResourceLocation.fromNamespaceAndPath("creaturefeature", "toadstool"))
-            .orElse(null);
 
     private final ServerLevel level;
     private final String levelKey;
@@ -103,6 +96,9 @@ public final class LevelRegionIndex implements RegionizerListener {
 
     // Entity lifecycle callbacks a worker raised, replayed on the main thread.
     private final DeferredEntityCallbacks deferredCallbacks = new DeferredEntityCallbacks();
+
+    // Positional compatibility work resolves owners at execution time.
+    private final RegionalTaskQueue regionWork = new RegionalTaskQueue();
 
     // Resolved lazily: the level is not fully built when this index is created.
     private net.minecraft.world.level.entity.LevelCallback<Entity> levelCallbacks;
@@ -290,6 +286,9 @@ public final class LevelRegionIndex implements RegionizerListener {
         boolean canParallelise = Config.parallelTickingConfigured()
             && RegionTracker.parallelAllowed()
             && RegionWorkers.isRunning();
+        this.regionWork.dispatch(this.regionizer.regions(), this.levelKey,
+            pos -> this.regionizer.regionForChunk(pos.getX() >> 4, pos.getZ() >> 4),
+            canParallelise);
         List<RegionTickState> ordered = new ArrayList<>(this.states.size());
         int throttled = snapshotEntityStates(ordered);
         this.lastSkippedRegions = 0;
@@ -421,6 +420,7 @@ public final class LevelRegionIndex implements RegionizerListener {
 
     private void tickUnownedRegionWork(List<ScheduledDrain> drains, RegionalChunkWork chunkWork,
                                        Runnable eventDrain) {
+        drainRegionWork(null);
         runUnownedScheduledDrains(drains);
         chunkWork.tickUnowned().run();
         if (eventDrain != null) {
@@ -493,13 +493,16 @@ public final class LevelRegionIndex implements RegionizerListener {
     }
 
     private static void tickEntity(Entity entity, Consumer<Entity> consumer) {
-        // Toadstool creates a Sable sub-level, whose chunk holders are main-thread-only.
-        if (entity.getType() == CREATURE_FEATURE_TOADSTOOL && RegionWorkers.isWorkerThread()) {
-            DeferredMainThreadWork.defer(MainThreadBoundaries.Boundary.ENTITY_LIFECYCLE,
-                () -> consumer.accept(entity));
-            return;
-        }
-        consumer.accept(entity);
+        CompatibilityTicks.tickEntity(entity, consumer);
+    }
+
+    public void enqueueRegionWork(BlockPos pos, Runnable work) {
+        this.regionWork.add(pos, work);
+    }
+
+    private void drainRegionWork(@Nullable Region region) {
+        this.regionWork.drain(region, pos -> this.regionizer.regionForChunk(
+            pos.getX() >> 4, pos.getZ() >> 4));
     }
 
     private void tickFullRegionsAsync(List<Region> regions, List<ScheduledDrain> drains,
@@ -633,6 +636,7 @@ public final class LevelRegionIndex implements RegionizerListener {
         long regionStart = System.nanoTime();
         long nonBlockEntityNanos = 0L;
         try {
+            drainRegionWork(region);
             for (ScheduledDrain drain : drains) {
                 int budget = Math.max(1, drain.fullBudget() / run.divisor());
                 drain.body().accept(budget);
@@ -695,6 +699,7 @@ public final class LevelRegionIndex implements RegionizerListener {
             RegionThreadContext.enter(region, this.levelKey);
         }
         try {
+            drainRegionWork(region);
             PhaseStats.measure(PhaseStats.Phase.ENTITIES, () -> {
                 for (Entity entity : state.currentSnapshot()) {
                     // Sliced by entity id: a stable, evenly spread key, so each entity ticks
@@ -731,6 +736,7 @@ public final class LevelRegionIndex implements RegionizerListener {
             int budget = Math.max(1, fullBudget / Math.max(1, region.tickDivisor()));
             RegionThreadContext.enter(region, this.levelKey);
             try {
+                drainRegionWork(region);
                 body.accept(budget);
             } finally {
                 RegionThreadContext.exit();
@@ -739,6 +745,7 @@ public final class LevelRegionIndex implements RegionizerListener {
         // Unbound: positions owned by no region.
         UNOWNED_TICK_PASS.set(Boolean.TRUE);
         try {
+            drainRegionWork(null);
             body.accept(fullBudget);
         } finally {
             UNOWNED_TICK_PASS.remove();
@@ -758,11 +765,13 @@ public final class LevelRegionIndex implements RegionizerListener {
         for (Region region : this.regionizer.regions()) {
             RegionThreadContext.enter(region, this.levelKey);
             try {
+                drainRegionWork(region);
                 body.run();
             } finally {
                 RegionThreadContext.exit();
             }
         }
+        drainRegionWork(null);
         body.run();
     }
 
@@ -1136,9 +1145,7 @@ public final class LevelRegionIndex implements RegionizerListener {
         for (TickingBlockEntity ticker : tickers) {
             BlockPos pos = positionOf(ticker);
             if (pos == null) {
-                // A ticker we cannot place must never take the server down: the compat contract
-                // is best-effort, and a third-party ticker is free to behave unexpectedly here.
-                // It goes to the orphan bucket, which vanilla's loop still ticks, in order.
+                // Unplaceable third-party tickers retain vanilla ordering in the orphan bucket.
                 reportUnplaceableTicker(ticker);
                 this.orphans.bufferBlockEntity(ticker);
                 continue;

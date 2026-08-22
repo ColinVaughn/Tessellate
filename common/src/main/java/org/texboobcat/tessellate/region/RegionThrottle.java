@@ -7,38 +7,9 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 
-// Decides how often each region is allowed to tick.
-//
-// This is what delivers the project's goal. Ticking every region every tick means one
-// overloaded region pushes the whole server tick past 50 ms, and every player pays for it. This
-// is the 6000-mob benchmark, where an empty area 1024 blocks from the lag machine still ran at
-// 11.3 TPS. Ticking an overloaded region less often keeps the server's total per-tick
-// work inside its budget, so the server holds 20 TPS and only the overloaded region runs slowly.
-//
-// The algorithm is deliberately simple, because a throttle that is hard to predict is worse
-// than one that is slightly subtessellate:
-//
-// - Every region starts at divisor 1 and ticks every tick.
-// - While the projected per-tick cost exceeds the budget, double the divisor of the region
-// contributing the most, up to maxDivisor.
-//
-// Projected cost of a region is cost / divisor: a region ticking every fourth tick
-// contributes a quarter of its cost to the average tick.
-//
-// What those contributions add up to depends on how regions execute. Serially the tick costs
-// their sum. In parallel it costs the wall-clock makespan instead, which is bounded below
-// by the largest single region, which cannot be split across threads, and by the total
-// divided across the available lanes. Using the serial sum while regions run in parallel would
-// throttle regions that comfortably fit, and would hide the entire benefit of running them in
-// parallel.
-//
-// regionBudgetMillis is now a floor rather than a target: regions are guaranteed at
-// least that much of a tick however large the rest of the server's overhead grows. What decides
-// when the throttle engages is targetTickMillis; see effectiveBudgetNanos.
-//
-// Regions below minThrottleMillis are never throttled. Without that floor, rounding and
-// measurement noise would throttle ordinary regions that are not the problem, and players would
-// see stutter that the server did not need to introduce.
+// Doubles the most expensive region's divisor until projected work fits the tick budget.
+// Parallel projection uses max(largest region, total work / worker lanes); serial uses total work.
+// Regions below minThrottleMillis remain unthrottled to avoid reacting to measurement noise.
 public final class RegionThrottle {
 
     private RegionThrottle() {
