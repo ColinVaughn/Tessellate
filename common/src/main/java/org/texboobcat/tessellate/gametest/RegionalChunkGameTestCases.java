@@ -421,6 +421,33 @@ public final class RegionalChunkGameTestCases {
         });
     }
 
+    public static void mobAiTicksOnRegionWorkers(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        for (int x = 0; x < 9; x++) {
+            for (int z = 0; z < 9; z++) {
+                level.setBlockAndUpdate(helper.absolutePos(new BlockPos(x, 0, z)),
+                    Blocks.STONE.defaultBlockState());
+            }
+        }
+
+        Mob sheep = helper.spawn(EntityType.SHEEP, new BlockPos(2, 1, 2));
+        Mob attacker = helper.spawnWithNoFreeWill(EntityType.ZOMBIE, new BlockPos(2, 1, 3));
+        double sheepX = sheep.getX();
+        double sheepZ = sheep.getZ();
+        helper.assertTrue(sheep.hurt(level.damageSources().mobAttack(attacker), 1.0F),
+            "could not trigger sheep panic");
+
+        helper.runAfterDelay(60, () -> {
+            double dx = sheep.getX() - sheepX;
+            double dz = sheep.getZ() - sheepZ;
+            helper.assertTrue(dx * dx + dz * dz > 0.25,
+                "damaged sheep did not run panic AI");
+            sheep.discard();
+            attacker.discard();
+            helper.succeed();
+        });
+    }
+
     public static void scheduledTickRouterPreservesVanillaContainerSemantics(
         GameTestHelper helper) {
         helper.succeedIf(() -> {

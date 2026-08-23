@@ -47,6 +47,7 @@ public final class TessellateFabricConfig {
             bool(config, "regions.asyncRegionLoops", true),
             integer(config, "regions.workerThreads", 0, 0, 64),
             bool(config, "regions.threadLocalRandom", true),
+            bool(config, "compatibility.serializeEntityTicks", false),
             strings(config, "compatibility.mainThreadEntities",
                 org.texboobcat.tessellate.Config.DEFAULT_MAIN_THREAD_ENTITIES),
             bool(config, "guard.diagnoseEntitySectionRaces", false),

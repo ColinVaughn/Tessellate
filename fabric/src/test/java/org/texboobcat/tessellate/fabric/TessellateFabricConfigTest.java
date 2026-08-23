@@ -31,6 +31,8 @@ class TessellateFabricConfigTest {
         assertEquals(java.util.List.of("minecraft:allay"), values.mainThreadEntities());
         assertEquals(java.util.List.of("minecraft:allay"),
             input.get("compatibility.mainThreadEntities"));
+        assertFalse(values.serializeEntityTicks());
+        assertEquals(false, input.get("compatibility.serializeEntityTicks"));
         assertFalse(values.strictGuard());
         assertEquals(false, input.get("guard.strict"));
         assertEquals(25.0, input.get("regions.budgetMillis"));
