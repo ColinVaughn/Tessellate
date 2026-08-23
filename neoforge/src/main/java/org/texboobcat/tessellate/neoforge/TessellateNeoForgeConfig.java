@@ -205,6 +205,13 @@ public final class TessellateNeoForgeConfig {
             "Required for parallelTicking; harmless without it.")
         .define("regions.threadLocalRandom", true);
 
+    private static final ModConfigSpec.BooleanValue SERIALIZE_ENTITY_TICKS = BUILDER
+        .comment(
+            "Prevent entity tick bodies from overlapping across region workers.",
+            "This keeps other regional systems parallel and is a compatibility fallback for",
+            "mods with shared mutable entity-tick state. Prefer upstream thread-safety fixes.")
+        .define("compatibility.serializeEntityTicks", false);
+
     private static final ModConfigSpec.ConfigValue<java.util.List<? extends String>>
             MAIN_THREAD_ENTITIES = BUILDER
         .comment(
@@ -247,7 +254,8 @@ public final class TessellateNeoForgeConfig {
             MAX_TICK_DIVISOR.get(), SHARD_ENTITY_STORAGE.get(), ASSERT_SHARD_OWNERSHIP.get(),
             PARALLEL_TICKING.get(), DIRECT_WORKER_CHUNK_READS.get(),
             PARALLEL_NATURAL_SPAWNING.get(), ASYNC_REGION_LOOPS.get(), WORKER_THREADS.get(),
-            THREAD_LOCAL_RANDOM.get(), MAIN_THREAD_ENTITIES.get().stream().map(String::valueOf).toList(),
+            THREAD_LOCAL_RANDOM.get(), SERIALIZE_ENTITY_TICKS.get(),
+            MAIN_THREAD_ENTITIES.get().stream().map(String::valueOf).toList(),
             DIAGNOSE_ENTITY_SECTION_RACES.get(), STRICT_GUARD.get(),
             LOG_REGION_CHANGES.get()));
     }

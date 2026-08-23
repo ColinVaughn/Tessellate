@@ -45,6 +45,11 @@ public final class RegionalChunkGameTests {
         RegionalChunkGameTestCases.pathfindingIsConcurrentOnRegionWorkers(helper);
     }
 
+    @GameTest(template = "bastion/blocks/air", timeoutTicks = 120)
+    public static void mobAiTicksOnRegionWorkers(GameTestHelper helper) {
+        RegionalChunkGameTestCases.mobAiTicksOnRegionWorkers(helper);
+    }
+
     @GameTest(template = "bastion/blocks/air", timeoutTicks = 100)
     public static void scheduledTickRouterPreservesVanillaContainerSemantics(
             GameTestHelper helper) {

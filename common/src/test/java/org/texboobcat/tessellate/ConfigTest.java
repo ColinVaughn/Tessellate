@@ -43,6 +43,7 @@ class ConfigTest {
         assertTrue(Config.asyncRegionLoops);
         assertEquals(0, Config.workerThreads);
         assertTrue(Config.threadLocalRandom);
+        assertFalse(Config.serializeEntityTicks);
         assertEquals(Config.DEFAULT_MAIN_THREAD_ENTITIES, Config.mainThreadEntities);
         assertFalse(Config.diagnoseEntitySectionRaces);
         assertFalse(Config.strictGuard);

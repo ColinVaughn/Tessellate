@@ -15,7 +15,7 @@ public final class Config {
         true, true, true, true,
         true, 25.0, 45.0, 2.0, 16,
         true, false, true, true, true, true,
-        0, true, DEFAULT_MAIN_THREAD_ENTITIES, false, false, false);
+        0, true, false, DEFAULT_MAIN_THREAD_ENTITIES, false, false, false);
 
     public static boolean regionsEnabled;
     public static int sectionShift;
@@ -38,6 +38,7 @@ public final class Config {
     public static boolean asyncRegionLoops;
     public static int workerThreads;
     public static boolean threadLocalRandom;
+    public static boolean serializeEntityTicks;
     public static List<String> mainThreadEntities;
     public static boolean diagnoseEntitySectionRaces;
     public static boolean strictGuard;
@@ -81,6 +82,7 @@ public final class Config {
         asyncRegionLoops = values.asyncRegionLoops();
         workerThreads = values.workerThreads();
         threadLocalRandom = values.threadLocalRandom();
+        serializeEntityTicks = values.serializeEntityTicks();
         mainThreadEntities = List.copyOf(values.mainThreadEntities());
         TessellateApiInternal.configureMainThreadEntities(mainThreadEntities);
         diagnoseEntitySectionRaces = values.diagnoseEntitySectionRaces();
@@ -98,6 +100,7 @@ public final class Config {
                          boolean parallelTicking, boolean directWorkerChunkReads,
                          boolean parallelNaturalSpawning, boolean asyncRegionLoops,
                          int workerThreads, boolean threadLocalRandom,
+                         boolean serializeEntityTicks,
                          List<String> mainThreadEntities,
                          boolean diagnoseEntitySectionRaces, boolean strictGuard,
                          boolean logRegionChanges) {

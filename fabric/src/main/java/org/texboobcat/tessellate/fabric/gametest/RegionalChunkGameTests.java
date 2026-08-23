@@ -38,6 +38,11 @@ public final class RegionalChunkGameTests {
         RegionalChunkGameTestCases.pathfindingIsConcurrentOnRegionWorkers(helper);
     }
 
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE, timeoutTicks = 120)
+    public void mobAiTicksOnRegionWorkers(GameTestHelper helper) {
+        RegionalChunkGameTestCases.mobAiTicksOnRegionWorkers(helper);
+    }
+
     @GameTest(template = FabricGameTest.EMPTY_STRUCTURE, timeoutTicks = 100)
     public void scheduledTickRouterPreservesVanillaContainerSemantics(GameTestHelper helper) {
         RegionalChunkGameTestCases.scheduledTickRouterPreservesVanillaContainerSemantics(helper);
