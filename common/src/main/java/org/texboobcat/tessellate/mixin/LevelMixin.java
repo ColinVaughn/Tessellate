@@ -6,6 +6,7 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.util.profiling.InactiveProfiler;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.TickingBlockEntity;
 import net.minecraft.world.level.chunk.ChunkAccess;
@@ -124,6 +125,20 @@ public abstract class LevelMixin implements LevelRegionIndex.RegionalLevelAccess
         if (RegionWorkers.isWorkerThread()) {
             cir.setReturnValue(InactiveProfiler.INSTANCE);
         }
+    }
+
+    // Vanilla guards the first comparator-neighbor read but not the block behind a conductor.
+    @Redirect(
+        method = "updateNeighbourForOutputSignal",
+        at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraft/world/level/Level;getBlockState(Lnet/minecraft/core/BlockPos;)"
+                + "Lnet/minecraft/world/level/block/state/BlockState;",
+            ordinal = 1))
+    private BlockState tessellate$skipUnloadedOutputSignalChunk(Level level, BlockPos pos) {
+        return RegionWorkers.isWorkerThread() && !level.hasChunkAt(pos)
+            ? Blocks.VOID_AIR.defaultBlockState()
+            : level.getBlockState(pos);
     }
 
     // Answer before ServerChunkCache so compatibility mods cannot wrap an already-loaded worker

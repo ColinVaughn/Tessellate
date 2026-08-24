@@ -101,6 +101,20 @@ public final class RegionalChunkGameTestCases {
         helper.assertTrue(source.equals(after.lastSource()),
             "teleport boundary lost its source region: " + after.lastSource());
 
+        int remoteChunkX = (start.getX() >> 4) + 512;
+        int remoteChunkZ = start.getZ() >> 4;
+        BlockPos outputPos = new BlockPos((remoteChunkX << 4) + 14, start.getY(),
+            (remoteChunkZ << 4) + 8);
+        level.getChunkAt(outputPos).setBlockState(outputPos.east(),
+            Blocks.STONE.defaultBlockState(), false);
+        helper.assertTrue(!level.hasChunkAt(outputPos.east(2)),
+            "output-signal regression setup loaded the adjacent chunk");
+        long unavailableBefore = RegionTracker.unavailableChunks();
+        RegionWorkers.runAllAndWait(List.of(
+            () -> level.updateNeighbourForOutputSignal(outputPos, Blocks.STONE), () -> { }));
+        helper.assertTrue(RegionTracker.unavailableChunks() == unavailableBefore,
+            "output-signal check requested its unloaded adjacent chunk");
+
         MainThreadBoundaries.Snapshot sectionBefore = MainThreadBoundaries.snapshot(
             MainThreadBoundaries.Boundary.ENTITY_LIFECYCLE);
         double targetY = entity.getY() + 16.0;
