@@ -5,6 +5,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import org.texboobcat.tessellate.Config;
+import org.texboobcat.tessellate.CompatibilityReporter;
 import org.slf4j.Logger;
 import org.texboobcat.tessellate.guard.ViolationLog;
 
@@ -180,11 +181,23 @@ public final class RegionTracker {
     // and flapping between modes would make the failure far harder to diagnose than simply
     // running single-threaded for the rest of the session.
     public static void degradeToSerial(String reason) {
+        degradeToSerial(reason, null);
+    }
+
+    public static void degradeToSerial(String reason, @Nullable Throwable failure) {
         if (parallelAllowed) {
             parallelAllowed = false;
             degradeReason = reason;
-            LOGGER.error("tessellate: falling back to serial region ticking for the rest of this "
-                + "session. Reason: {}", reason);
+            CompatibilityReporter.report("region-ticking", "serial-fallback",
+                "falling back to serial region ticking for this session: " + reason, failure);
+        }
+    }
+
+    public static void forceSerial(String reason) {
+        if (parallelAllowed) {
+            parallelAllowed = false;
+            degradeReason = reason;
+            LOGGER.warn("tessellate: using serial region ticking: {}", reason);
         }
     }
 

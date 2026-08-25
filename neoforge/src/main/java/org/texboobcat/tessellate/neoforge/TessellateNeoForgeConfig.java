@@ -222,6 +222,38 @@ public final class TessellateNeoForgeConfig {
             value -> value instanceof String string
                 && net.minecraft.resources.ResourceLocation.tryParse(string) != null);
 
+    private static final ModConfigSpec.ConfigValue<java.util.List<? extends String>>
+            FORCE_SERIAL_MODS = BUILDER
+        .comment(
+            "Mod IDs that force serial region ticking when loaded.",
+            "Use this as a temporary compatibility override while the underlying mod is patched.")
+        .defineListAllowEmpty("compatibility.forceSerialMods", java.util.List.of(),
+            () -> "example_mod", value -> value instanceof String string
+                && string.matches("[a-z][a-z0-9_]{1,63}"));
+
+    private static final ModConfigSpec.ConfigValue<String> REPORT_ENDPOINT = BUILDER
+        .comment(
+            "Optional HTTPS endpoint for structured compatibility reports. Blank disables uploads.",
+            "Use the rate-limited Tessellate Edge Function; direct table writes are disabled.")
+        .define("compatibility.reportEndpoint", "");
+
+    private static final ModConfigSpec.ConfigValue<String> REPORT_API_KEY = BUILDER
+        .comment("Optional public/anon API key for the compatibility report endpoint.",
+            "Never put a Supabase service-role key here.")
+        .define("compatibility.reportApiKey", "");
+
+    private static final ModConfigSpec.ConfigValue<String> RULES_ENDPOINT = BUILDER
+        .comment(
+            "HTTPS endpoint for curated entity compatibility rules.",
+            "Blank disables remote rules without enabling or disabling failure reporting.")
+        .define("compatibility.rulesEndpoint",
+            Config.DEFAULT_COMPATIBILITY_RULES_ENDPOINT);
+
+    private static final ModConfigSpec.ConfigValue<String> RULES_API_KEY = BUILDER
+        .comment("Public/anon API key for the read-only compatibility rules endpoint.",
+            "Never put a Supabase service-role key here.")
+        .define("compatibility.rulesApiKey", Config.DEFAULT_COMPATIBILITY_RULES_API_KEY);
+
     private static final ModConfigSpec.BooleanValue DIAGNOSE_ENTITY_SECTION_RACES = BUILDER
         .comment(
             "Report the main-thread call sites that mutate entity storage while a region worker",
@@ -258,5 +290,9 @@ public final class TessellateNeoForgeConfig {
             MAIN_THREAD_ENTITIES.get().stream().map(String::valueOf).toList(),
             DIAGNOSE_ENTITY_SECTION_RACES.get(), STRICT_GUARD.get(),
             LOG_REGION_CHANGES.get()));
+        Config.configureCompatibility(
+            FORCE_SERIAL_MODS.get().stream().map(String::valueOf).toList(),
+            REPORT_ENDPOINT.get(), REPORT_API_KEY.get());
+        Config.configureCompatibilityRules(RULES_ENDPOINT.get(), RULES_API_KEY.get());
     }
 }

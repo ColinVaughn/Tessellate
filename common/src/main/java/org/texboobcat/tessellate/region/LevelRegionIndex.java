@@ -597,7 +597,7 @@ public final class LevelRegionIndex implements RegionizerListener {
                 }
             }, failure -> {
                 RegionTracker.degradeToSerial("region#" + region.id()
-                    + " threw on a worker thread: " + failure);
+                    + " threw on a worker thread: " + failure, failure);
                 LOGGER.error("tessellate: region tick failed on a worker thread", failure);
             });
         } catch (RuntimeException failure) {

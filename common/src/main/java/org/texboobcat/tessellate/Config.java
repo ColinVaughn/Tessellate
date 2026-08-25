@@ -4,11 +4,26 @@ import org.texboobcat.tessellate.api.TessellateApiInternal;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.regex.Pattern;
 
 public final class Config {
 
     public static final List<String> DEFAULT_MAIN_THREAD_ENTITIES =
         List.of("creaturefeature:toadstool");
+    public static final String DEFAULT_COMPATIBILITY_RULES_ENDPOINT =
+        "https://kuisavsedtdbmuroharj.supabase.co/rest/v1/"
+            + "tessellate_entity_compatibility_rules";
+    public static final String DEFAULT_COMPATIBILITY_FEATURE_RULES_ENDPOINT =
+        "https://kuisavsedtdbmuroharj.supabase.co/rest/v1/"
+            + "tessellate_mod_compatibility_rules";
+    public static final String COMPATIBILITY_REPORT_FUNCTION_ENDPOINT =
+        "https://kuisavsedtdbmuroharj.supabase.co/functions/v1/tessellate-report";
+    public static final String LEGACY_COMPATIBILITY_REPORT_ENDPOINT =
+        "https://kuisavsedtdbmuroharj.supabase.co/rest/v1/"
+            + "tessellate_compatibility_reports";
+    public static final String DEFAULT_COMPATIBILITY_RULES_API_KEY =
+        "sb_publishable_9rG9js2JGBznNNHWKVphpQ__IRClqQd";
+    private static final Pattern MOD_ID = Pattern.compile("[a-z][a-z0-9_]{1,63}");
 
     private static final Values DEFAULTS = new Values(
         true, 2, 2, 200,
@@ -43,6 +58,11 @@ public final class Config {
     public static boolean diagnoseEntitySectionRaces;
     public static boolean strictGuard;
     public static boolean logRegionChanges;
+    public static List<String> forceSerialMods;
+    public static String compatibilityReportEndpoint;
+    public static String compatibilityReportApiKey;
+    public static String compatibilityRulesEndpoint;
+    public static String compatibilityRulesApiKey;
 
     static {
         reset();
@@ -57,6 +77,27 @@ public final class Config {
 
     public static void reset() {
         apply(DEFAULTS);
+        configureCompatibility(List.of(), "", "");
+        configureCompatibilityRules(DEFAULT_COMPATIBILITY_RULES_ENDPOINT,
+            DEFAULT_COMPATIBILITY_RULES_API_KEY);
+    }
+
+    public static void configureCompatibility(List<String> serialMods, String reportEndpoint,
+                                              String reportApiKey) {
+        forceSerialMods = Objects.requireNonNull(serialMods, "serialMods").stream()
+            .filter(Objects::nonNull)
+            .filter(id -> MOD_ID.matcher(id).matches())
+            .distinct()
+            .toList();
+        String endpoint = Objects.requireNonNull(reportEndpoint, "reportEndpoint").strip();
+        compatibilityReportEndpoint = LEGACY_COMPATIBILITY_REPORT_ENDPOINT.equals(endpoint)
+            ? COMPATIBILITY_REPORT_FUNCTION_ENDPOINT : endpoint;
+        compatibilityReportApiKey = Objects.requireNonNull(reportApiKey, "reportApiKey").strip();
+    }
+
+    public static void configureCompatibilityRules(String endpoint, String apiKey) {
+        compatibilityRulesEndpoint = Objects.requireNonNull(endpoint, "endpoint").strip();
+        compatibilityRulesApiKey = Objects.requireNonNull(apiKey, "apiKey").strip();
     }
 
     public static void apply(final Values values) {

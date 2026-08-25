@@ -1,0 +1,4 @@
+project_id = "kuisavsedtdbmuroharj"
+
+[functions.tessellate-report]
+verify_jwt = false

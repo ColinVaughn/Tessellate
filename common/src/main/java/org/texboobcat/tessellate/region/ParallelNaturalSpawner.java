@@ -14,6 +14,7 @@ import net.minecraft.world.level.biome.MobSpawnSettings;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.LevelChunk;
 import org.texboobcat.tessellate.PlatformHooks;
+import org.texboobcat.tessellate.CompatibilityReporter;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -409,6 +410,19 @@ public final class ParallelNaturalSpawner {
     }
 
     public static void degradeToSerial(String reason) {
+        degradeToSerial(reason, null);
+    }
+
+    public static void degradeToSerial(String reason, @Nullable Throwable failure) {
+        if (parallelAllowed) {
+            parallelAllowed = false;
+            degradeReason = reason;
+            CompatibilityReporter.report("natural-spawning", "serial-fallback",
+                "falling back to serial natural spawning for this session: " + reason, failure);
+        }
+    }
+
+    public static void forceSerial(String reason) {
         if (parallelAllowed) {
             parallelAllowed = false;
             degradeReason = reason;

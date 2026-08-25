@@ -203,7 +203,8 @@ public abstract class ServerChunkCacheMixin implements LevelRegionIndex.Regional
                 spawnState.getMobCategoryCounts(), entities, this::tessellate$getFullChunk);
         } catch (Throwable failure) {
             ParallelNaturalSpawner.failed();
-            ParallelNaturalSpawner.degradeToSerial("natural-spawn snapshot failed: " + failure);
+            ParallelNaturalSpawner.degradeToSerial(
+                "natural-spawn snapshot failed: " + failure, failure);
             TESSELLATE$LOGGER.error("tessellate: natural-spawn snapshot failed", failure);
             return null;
         }
@@ -382,7 +383,7 @@ public abstract class ServerChunkCacheMixin implements LevelRegionIndex.Regional
         Throwable first = failures.peek();
         if (first != null) {
             ParallelNaturalSpawner.degradeToSerial(
-                "natural spawning failed on a worker: " + first);
+                "natural spawning failed on a worker: " + first, first);
             TESSELLATE$LOGGER.error("tessellate: parallel natural spawning failed", first);
         }
         return false;

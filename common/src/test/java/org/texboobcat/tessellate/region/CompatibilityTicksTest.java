@@ -11,6 +11,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CompatibilityTicksTest {
@@ -18,6 +19,7 @@ class CompatibilityTicksTest {
     @AfterEach
     void restoreDefaults() {
         Config.reset();
+        CompatibilityTicks.configureRemoteEntitySerialization(false);
     }
 
     @Test
@@ -39,9 +41,9 @@ class CompatibilityTicksTest {
     }
 
     @Test
-    void compatibilityModeSerializesOnlyEntityTicks() throws Exception {
+    void remoteCompatibilityModeSerializesOnlyEntityTicks() throws Exception {
         Config.reset();
-        Config.serializeEntityTicks = true;
+        CompatibilityTicks.configureRemoteEntitySerialization(true);
         CountDownLatch firstEntered = new CountDownLatch(1);
         CountDownLatch releaseFirst = new CountDownLatch(1);
         CountDownLatch unrelatedWorkRan = new CountDownLatch(1);
@@ -68,6 +70,24 @@ class CompatibilityTicksTest {
         } finally {
             releaseFirst.countDown();
         }
+    }
+
+    @Test
+    void failedEntityTypeSurvivesWorkerFailureWrapping() {
+        RuntimeException entityFailure = CompatibilityTicks.entityTickFailure(
+            "example:unsafe", new IllegalStateException("mod failure"));
+
+        assertEquals("example:unsafe", CompatibilityTicks.failedEntityTypeId(
+            new IllegalStateException("region failure", entityFailure)));
+    }
+
+    @Test
+    void failedBlockEntityTypeSurvivesWorkerFailureWrapping() {
+        RuntimeException blockEntityFailure = CompatibilityTicks.blockEntityTickFailure(
+            "example:machine", new IllegalStateException("mod failure"));
+
+        assertEquals("example:machine", CompatibilityTicks.failedBlockEntityTypeId(
+            new IllegalStateException("region failure", blockEntityFailure)));
     }
 
     private static void runBlockingTick(CountDownLatch entered, CountDownLatch release) {

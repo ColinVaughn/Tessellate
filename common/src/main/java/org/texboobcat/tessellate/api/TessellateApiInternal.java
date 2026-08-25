@@ -11,4 +11,12 @@ public final class TessellateApiInternal {
     public static void configureMainThreadEntities(Collection<String> entityIds) {
         TessellateApi.configureMainThreadEntities(entityIds);
     }
+
+    public static void configureRemoteMainThreadEntities(Collection<String> entityIds) {
+        TessellateApi.configureRemoteMainThreadEntities(entityIds);
+    }
+
+    public static void configureRemoteMainThreadBlockEntities(Collection<String> blockEntityIds) {
+        TessellateApi.configureRemoteMainThreadBlockEntities(blockEntityIds);
+    }
 }

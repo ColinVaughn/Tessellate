@@ -59,6 +59,31 @@ class TessellateApiTest {
     }
 
     @Test
+    void remoteEntityIdsAreIndependentFromLocalConfig() {
+        TessellateApi.configureMainThreadEntities(List.of("minecraft:armadillo"));
+        TessellateApi.configureRemoteMainThreadEntities(List.of("minecraft:bat"));
+        try {
+            assertTrue(TessellateApi.requiresMainThreadEntityTick(EntityType.ARMADILLO));
+            assertTrue(TessellateApi.requiresMainThreadEntityTick(EntityType.BAT));
+        } finally {
+            TessellateApi.configureMainThreadEntities(List.of());
+            TessellateApi.configureRemoteMainThreadEntities(List.of());
+        }
+    }
+
+    @Test
+    void resolvesRemoteBlockEntityIds() {
+        TessellateApi.configureRemoteMainThreadBlockEntities(List.of("minecraft:barrel"));
+        try {
+            assertTrue(TessellateApi.requiresMainThreadBlockEntityTick(BlockEntityType.BARREL));
+            assertTrue(TessellateApi.hasMainThreadBlockEntityTypes());
+        } finally {
+            TessellateApi.configureRemoteMainThreadBlockEntities(List.of());
+        }
+        assertFalse(TessellateApi.requiresMainThreadBlockEntityTick(BlockEntityType.BARREL));
+    }
+
+    @Test
     void queuesMainThreadWork() {
         AtomicBoolean ran = new AtomicBoolean();
         TessellateApi.executeOnMainThread(() -> ran.set(true));

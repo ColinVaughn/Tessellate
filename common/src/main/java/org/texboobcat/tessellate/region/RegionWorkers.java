@@ -3,6 +3,7 @@ package org.texboobcat.tessellate.region;
 import com.mojang.logging.LogUtils;
 import org.slf4j.Logger;
 import org.texboobcat.tessellate.Config;
+import org.texboobcat.tessellate.CompatibilityReporter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -231,6 +232,8 @@ public final class RegionWorkers {
                 for (int i = 1; i < failures.size(); i++) {
                     first.addSuppressed(failures.get(i));
                 }
+                CompatibilityReporter.report("region-worker", "worker-failure",
+                    "region tick failed on a worker thread", first);
                 throw new IllegalStateException("region tick failed on a worker thread", first);
             }
         }

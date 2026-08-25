@@ -26,9 +26,16 @@ public final class TessellateApi {
     private static final Set<BlockEntityType<?>> MAIN_THREAD_BLOCK_ENTITY_TYPES =
         ConcurrentHashMap.newKeySet();
     private static volatile ConfiguredEntities configuredEntities = configuredEntities(Set.of());
+    private static volatile ConfiguredEntities remoteEntities = configuredEntities(Set.of());
+    private static volatile ConfiguredBlockEntities remoteBlockEntities =
+        configuredBlockEntities(Set.of());
 
     private record ConfiguredEntities(Set<ResourceLocation> ids,
                                       ConcurrentMap<EntityType<?>, Boolean> decisions) {
+    }
+
+    private record ConfiguredBlockEntities(Set<ResourceLocation> ids,
+                                           ConcurrentMap<BlockEntityType<?>, Boolean> decisions) {
     }
 
     private TessellateApi() {
@@ -56,26 +63,55 @@ public final class TessellateApi {
             return true;
         }
         ConfiguredEntities configured = configuredEntities;
-        return configured.decisions().computeIfAbsent(type, candidate ->
-            configured.ids().contains(BuiltInRegistries.ENTITY_TYPE.getKey(candidate)));
+        if (configured.decisions().computeIfAbsent(type, candidate ->
+                configured.ids().contains(BuiltInRegistries.ENTITY_TYPE.getKey(candidate)))) {
+            return true;
+        }
+        ConfiguredEntities remote = remoteEntities;
+        return remote.decisions().computeIfAbsent(type, candidate ->
+            remote.ids().contains(BuiltInRegistries.ENTITY_TYPE.getKey(candidate)));
     }
 
     static void configureMainThreadEntities(Collection<String> entityIds) {
+        configuredEntities = parseConfiguredEntities(entityIds);
+    }
+
+    static void configureRemoteMainThreadEntities(Collection<String> entityIds) {
+        remoteEntities = parseConfiguredEntities(entityIds);
+    }
+
+    static void configureRemoteMainThreadBlockEntities(Collection<String> blockEntityIds) {
+        Objects.requireNonNull(blockEntityIds, "blockEntityIds");
+        Set<ResourceLocation> ids = blockEntityIds.stream()
+            .filter(Objects::nonNull)
+            .map(ResourceLocation::tryParse)
+            .filter(Objects::nonNull)
+            .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        remoteBlockEntities = configuredBlockEntities(ids);
+    }
+
+    private static ConfiguredEntities parseConfiguredEntities(Collection<String> entityIds) {
         Objects.requireNonNull(entityIds, "entityIds");
         Set<ResourceLocation> ids = entityIds.stream()
             .filter(Objects::nonNull)
             .map(ResourceLocation::tryParse)
             .filter(Objects::nonNull)
             .collect(java.util.stream.Collectors.toUnmodifiableSet());
-        configuredEntities = configuredEntities(ids);
+        return configuredEntities(ids);
     }
 
     public static boolean requiresMainThreadBlockEntityTick(BlockEntityType<?> type) {
-        return MAIN_THREAD_BLOCK_ENTITY_TYPES.contains(Objects.requireNonNull(type, "type"));
+        Objects.requireNonNull(type, "type");
+        if (MAIN_THREAD_BLOCK_ENTITY_TYPES.contains(type)) {
+            return true;
+        }
+        ConfiguredBlockEntities remote = remoteBlockEntities;
+        return remote.decisions().computeIfAbsent(type, candidate ->
+            remote.ids().contains(BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(candidate)));
     }
 
     public static boolean hasMainThreadBlockEntityTypes() {
-        return !MAIN_THREAD_BLOCK_ENTITY_TYPES.isEmpty();
+        return !MAIN_THREAD_BLOCK_ENTITY_TYPES.isEmpty() || !remoteBlockEntities.ids().isEmpty();
     }
 
     /** Returns whether the current call is executing inside a Tessellate region scope. */
@@ -123,6 +159,10 @@ public final class TessellateApi {
 
     private static ConfiguredEntities configuredEntities(Set<ResourceLocation> ids) {
         return new ConfiguredEntities(ids, new ConcurrentHashMap<>());
+    }
+
+    private static ConfiguredBlockEntities configuredBlockEntities(Set<ResourceLocation> ids) {
+        return new ConfiguredBlockEntities(ids, new ConcurrentHashMap<>());
     }
 
     /**
