@@ -48,6 +48,13 @@ class ConfigTest {
         assertFalse(Config.diagnoseEntitySectionRaces);
         assertFalse(Config.strictGuard);
         assertFalse(Config.logRegionChanges);
+        assertEquals(java.util.List.of(), Config.forceSerialMods);
+        assertEquals("", Config.compatibilityReportEndpoint);
+        assertEquals("", Config.compatibilityReportApiKey);
+        assertEquals(Config.DEFAULT_COMPATIBILITY_RULES_ENDPOINT,
+            Config.compatibilityRulesEndpoint);
+        assertEquals(Config.DEFAULT_COMPATIBILITY_RULES_API_KEY,
+            Config.compatibilityRulesApiKey);
     }
 
     @Test
@@ -64,5 +71,32 @@ class ConfigTest {
 
         Config.threadLocalRandom = false;
         assertFalse(Config.parallelTickingConfigured());
+    }
+
+    @Test
+    void compatibilityConfigRejectsInvalidModIds() {
+        Config.configureCompatibility(java.util.List.of("c2me", "not-an-id", "c2me"),
+            " https://example.invalid/report ", " public-key ");
+
+        assertEquals(java.util.List.of("c2me"), Config.forceSerialMods);
+        assertEquals("https://example.invalid/report", Config.compatibilityReportEndpoint);
+        assertEquals("public-key", Config.compatibilityReportApiKey);
+    }
+
+    @Test
+    void legacyDirectReportEndpointUsesRateLimitedFunction() {
+        Config.configureCompatibility(java.util.List.of(),
+            Config.LEGACY_COMPATIBILITY_REPORT_ENDPOINT, "public-key");
+
+        assertEquals(Config.COMPATIBILITY_REPORT_FUNCTION_ENDPOINT,
+            Config.compatibilityReportEndpoint);
+    }
+
+    @Test
+    void compatibilityRulesCanBeDisabledOrRedirected() {
+        Config.configureCompatibilityRules(" https://example.invalid/rules ", " read-key ");
+
+        assertEquals("https://example.invalid/rules", Config.compatibilityRulesEndpoint);
+        assertEquals("read-key", Config.compatibilityRulesApiKey);
     }
 }

@@ -26,6 +26,7 @@ TEST_TAG = "tessellate_modded"
 
 # Chosen to exercise different tick paths: land AI, water AI, flying AI, and swarms.
 CANDIDATE_MOBS = [
+    "superbwarfare:truck",
     "friendsandfoes:copper_golem", "friendsandfoes:crab", "friendsandfoes:glare",
     "friendsandfoes:iceologer", "friendsandfoes:illusioner", "friendsandfoes:moobloom",
     "friendsandfoes:rascal", "friendsandfoes:tuff_golem", "friendsandfoes:wildfire",
@@ -166,8 +167,14 @@ def count_entities(rcon, selector):
     return int(match.group(1)) if match else -1
 
 
+def fresh_command(command):
+    """Keep long, multi-packet status replies from desynchronizing the work connection."""
+    with Rcon(timeout=600.0) as rcon:
+        return rcon.command(command)
+
+
 def status(rcon):
-    out = rcon.command("tessellate regions")
+    out = fresh_command("tessellate regions")
     mode = re.search(r"execution: (.+)", out)
     counters = re.search(
         r"deferred to main thread: (\d+)/(\d+) entity callback\(s\), (\d+)/(\d+) level write", out)
@@ -175,14 +182,12 @@ def status(rcon):
             tuple(int(v) for v in counters.groups()) if counters else (0, 0, 0, 0))
 
 
-def dispatched_regions(rcon):
-    """Return the number of regions dispatched on the last tick."""
-    out = rcon.command("tessellate regions")
-    overworld = out.split("minecraft:overworld", 1)
-    if len(overworld) < 2:
-        return 0
-    found = re.search(r"parallel: (\d+) region\(s\) dispatched", overworld[1])
-    return int(found.group(1)) if found else 0
+def worker_parallelism(rcon):
+    """Return peak concurrent worker calls without relying on a truncated region reply."""
+    out = fresh_command("tessellate phases")
+    peaks = [int(value) for value in re.findall(
+        r"(?m)^[^:\r\n]+: worker [^\r\n]+? peak (\d+)", out)]
+    return max(peaks, default=0)
 
 
 def main():
@@ -253,15 +258,15 @@ def main():
         print(f"  callbacks:        {after[0]}/{after[1]} replayed/deferred")
         print(f"  level writes:     {after[2]}/{after[3]} replayed/deferred")
 
-        check("still running in parallel, no degrade to serial", "worker" in mode_after,
+        check("still running in parallel, no degrade to serial",
+              mode_after.startswith(("async", "staged")),
               mode_after)
         check("the tagged modded mobs survived the run",
               alive_after > 0 and alive_after == alive_before,
               f"{alive_after} left of {alive_before}")
-        dispatched = max(dispatched_regions(rcon) for _ in range(5))
-        check("the modded load actually reached the region workers", dispatched > 1,
-              f"{dispatched} region(s) dispatched on the sampled tick; 0 or 1 means this ran on "
-              f"the main thread and tested nothing about parallelism")
+        parallelism = worker_parallelism(rcon)
+        check("the modded load actually ran concurrently on region workers", parallelism > 1,
+              f"peak {parallelism} concurrent worker call(s)")
         check("every deferred callback was replayed", after[0] == after[1],
               f"replayed {after[0]}, deferred {after[1]}")
         check("every deferred level write was replayed", after[2] == after[3],

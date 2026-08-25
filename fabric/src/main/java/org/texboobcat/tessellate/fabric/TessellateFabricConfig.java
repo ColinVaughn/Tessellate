@@ -19,6 +19,15 @@ public final class TessellateFabricConfig {
                 .sync().preserveInsertionOrder().build()) {
             file.load();
             org.texboobcat.tessellate.Config.apply(read(file));
+            org.texboobcat.tessellate.Config.configureCompatibility(
+                strings(file, "compatibility.forceSerialMods", List.of()),
+                text(file, "compatibility.reportEndpoint", ""),
+                text(file, "compatibility.reportApiKey", ""));
+            org.texboobcat.tessellate.Config.configureCompatibilityRules(
+                text(file, "compatibility.rulesEndpoint",
+                    org.texboobcat.tessellate.Config.DEFAULT_COMPATIBILITY_RULES_ENDPOINT),
+                text(file, "compatibility.rulesApiKey",
+                    org.texboobcat.tessellate.Config.DEFAULT_COMPATIBILITY_RULES_API_KEY));
             file.save();
         }
     }
@@ -93,6 +102,14 @@ public final class TessellateFabricConfig {
                 .filter(id -> ResourceLocation.tryParse(id) != null)
                 .toList()
             : defaultValue;
+        config.set(path, value);
+        return value;
+    }
+
+    private static String text(com.electronwill.nightconfig.core.Config config, String path,
+                               String defaultValue) {
+        Object raw = config.getOptional(path).orElse(defaultValue);
+        String value = raw instanceof String string ? string.strip() : defaultValue;
         config.set(path, value);
         return value;
     }

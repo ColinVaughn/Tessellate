@@ -239,6 +239,11 @@ diagnostics.
 | `regions.scopedScheduledTicks` | `true` | region-own block/fluid schedulers; false uses one serial fallback child |
 | `regions.scopedBlockEvents` | `true` | region-own block-event callbacks; false uses the serial fallback queue |
 | `compatibility.mainThreadEntities` | `["creaturefeature:toadstool"]` | entity types forced onto the main thread until their mods adopt the compatibility API |
+| `compatibility.forceSerialMods` | `[]` | loaded mod IDs that force serial region ticking for the session |
+| `compatibility.rulesEndpoint` | Tessellate's public rules table | curated compatibility restrictions; blank disables remote rules |
+| `compatibility.rulesApiKey` | public key | read-only rules key; never use a service-role key |
+| `compatibility.reportEndpoint` | `""` | optional structured compatibility-report endpoint; blank disables uploads |
+| `compatibility.reportApiKey` | `""` | optional public/anon API key; never use a service-role key |
 
 To return to serial regional ticking while diagnosing a mod conflict:
 
@@ -246,6 +251,42 @@ To return to serial regional ticking while diagnosing a mod conflict:
 parallelTicking = false
 asyncRegionLoops = false
 ```
+
+Runtime fallbacks always log a suspected mod and source frame locally. To collect opt-in reports in
+Supabase, run `supabase/compatibility_reports.sql`, deploy the `tessellate-report` Edge Function, set
+`compatibility.reportEndpoint` to
+`https://kuisavsedtdbmuroharj.supabase.co/functions/v1/tessellate-report`, and set
+`compatibility.reportApiKey` to the project's publishable key. Reports contain the
+loader/game/mod versions, failure class, failing entity or block-entity type when known, one suspected
+frame, and the loaded mod inventory; they do not contain raw logs, server addresses, world names, or
+player data. Direct client writes to the report and rule tables are denied; ingestion is limited to
+60 reports per source address and 5,000 reports project-wide per hour. Reports remain untrusted and
+must be reviewed before a maintainer promotes a version-scoped compatibility rule.
+
+The same SQL creates maintainer-owned entity and mod compatibility rule tables. At startup, Tessellate
+applies only rules matching a loaded mod, loader, and exact version (or `*`). Remote rules can force an
+entity or block entity onto the main thread, serialize entity ticks, disable parallel natural spawning,
+or force serial region ticking. They can only reduce concurrency; a remote rule never enables a local
+feature. Set `rulesEndpoint = ""` to disable remote rules. Failure reporting remains opt-in and
+independent, and anonymous reports never create rules. Promote a confirmed entity report with SQL like:
+
+```sql
+insert into public.tessellate_entity_compatibility_rules
+    (mod_id, mod_version, loader, entity_type_id, reason)
+values ('example_mod', '1.2.3', 'neoforge', 'example_mod:unsafe_entity',
+        'entity tick uses main-thread-only state');
+```
+
+The `tessellate_mod_compatibility_rules.action` values are `main_thread_block_entity`,
+`serialize_entity_ticks`, `disable_parallel_spawning`, and `force_serial_regions`. Only the block-entity
+action uses `target_id`; the other actions use an empty string.
+
+In Supabase, open `tessellate_entity_compatibility_candidates` or
+`tessellate_mod_compatibility_candidates`. They group repeated failures, show `unreviewed`, `active`, or
+`disabled`, and include ready-to-run `promotion_sql`. Candidate views remain maintainer-only; the public
+rules key cannot read failure reports or candidate details.
+
+Use `compatibility.forceSerialMods` only when the failure cannot be isolated to an entity type.
 
 ### Commands
 

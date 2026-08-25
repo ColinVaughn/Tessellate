@@ -296,16 +296,19 @@ public abstract class LevelMixin implements LevelRegionIndex.RegionalLevelAccess
     @Unique
     private static void tessellate$tickBlockEntity(Level level, TickingBlockEntity ticker,
                                                    BlockPos pos) {
-        if (TessellateApi.hasMainThreadBlockEntityTypes()) {
-            BlockEntity blockEntity = level.getBlockEntity(pos);
-            if (blockEntity != null && CompatibilityTicks.deferBlockEntity(
-                    blockEntity.getType(), () -> tessellate$tickBlockEntity(level, ticker, pos))) {
-                return;
-            }
+        BlockEntity blockEntity = RegionWorkers.isWorkerThread()
+            || TessellateApi.hasMainThreadBlockEntityTypes() ? level.getBlockEntity(pos) : null;
+        if (blockEntity != null && CompatibilityTicks.deferBlockEntity(
+                blockEntity.getType(), () -> tessellate$tickBlockEntity(level, ticker, pos))) {
+            return;
         }
         if (!ticker.isRemoved() && level.tickRateManager().runsNormally()
             && level.shouldTickBlocksAt(pos)) {
-            ticker.tick();
+            if (blockEntity == null) {
+                ticker.tick();
+            } else {
+                CompatibilityTicks.tickBlockEntity(blockEntity.getType(), ticker::tick);
+            }
         }
     }
 
