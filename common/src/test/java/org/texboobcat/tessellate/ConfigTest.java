@@ -49,8 +49,10 @@ class ConfigTest {
         assertFalse(Config.strictGuard);
         assertFalse(Config.logRegionChanges);
         assertEquals(java.util.List.of(), Config.forceSerialMods);
-        assertEquals("", Config.compatibilityReportEndpoint);
-        assertEquals("", Config.compatibilityReportApiKey);
+        assertEquals(Config.COMPATIBILITY_REPORT_FUNCTION_ENDPOINT,
+            Config.compatibilityReportEndpoint);
+        assertEquals(Config.DEFAULT_COMPATIBILITY_RULES_API_KEY,
+            Config.compatibilityReportApiKey);
         assertEquals(Config.DEFAULT_COMPATIBILITY_RULES_ENDPOINT,
             Config.compatibilityRulesEndpoint);
         assertEquals(Config.DEFAULT_COMPATIBILITY_RULES_API_KEY,
@@ -81,6 +83,14 @@ class ConfigTest {
         assertEquals(java.util.List.of("c2me"), Config.forceSerialMods);
         assertEquals("https://example.invalid/report", Config.compatibilityReportEndpoint);
         assertEquals("public-key", Config.compatibilityReportApiKey);
+    }
+
+    @Test
+    void compatibilityReportingCanBeDisabled() {
+        Config.configureCompatibility(java.util.List.of(), "", "");
+
+        assertEquals("", Config.compatibilityReportEndpoint);
+        assertEquals("", Config.compatibilityReportApiKey);
     }
 
     @Test

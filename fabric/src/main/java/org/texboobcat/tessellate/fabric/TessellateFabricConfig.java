@@ -21,8 +21,10 @@ public final class TessellateFabricConfig {
             org.texboobcat.tessellate.Config.apply(read(file));
             org.texboobcat.tessellate.Config.configureCompatibility(
                 strings(file, "compatibility.forceSerialMods", List.of()),
-                text(file, "compatibility.reportEndpoint", ""),
-                text(file, "compatibility.reportApiKey", ""));
+                text(file, "compatibility.reportEndpoint",
+                    org.texboobcat.tessellate.Config.COMPATIBILITY_REPORT_FUNCTION_ENDPOINT),
+                text(file, "compatibility.reportApiKey",
+                    org.texboobcat.tessellate.Config.DEFAULT_COMPATIBILITY_RULES_API_KEY));
             org.texboobcat.tessellate.Config.configureCompatibilityRules(
                 text(file, "compatibility.rulesEndpoint",
                     org.texboobcat.tessellate.Config.DEFAULT_COMPATIBILITY_RULES_ENDPOINT),

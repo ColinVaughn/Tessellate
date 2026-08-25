@@ -77,7 +77,8 @@ public final class Config {
 
     public static void reset() {
         apply(DEFAULTS);
-        configureCompatibility(List.of(), "", "");
+        configureCompatibility(List.of(), COMPATIBILITY_REPORT_FUNCTION_ENDPOINT,
+            DEFAULT_COMPATIBILITY_RULES_API_KEY);
         configureCompatibilityRules(DEFAULT_COMPATIBILITY_RULES_ENDPOINT,
             DEFAULT_COMPATIBILITY_RULES_API_KEY);
     }
