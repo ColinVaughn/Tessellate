@@ -233,14 +233,14 @@ public final class TessellateNeoForgeConfig {
 
     private static final ModConfigSpec.ConfigValue<String> REPORT_ENDPOINT = BUILDER
         .comment(
-            "Optional HTTPS endpoint for structured compatibility reports. Blank disables uploads.",
+            "HTTPS endpoint for structured compatibility reports. Blank disables uploads.",
             "Use the rate-limited Tessellate Edge Function; direct table writes are disabled.")
-        .define("compatibility.reportEndpoint", "");
+        .define("compatibility.reportEndpoint", Config.COMPATIBILITY_REPORT_FUNCTION_ENDPOINT);
 
     private static final ModConfigSpec.ConfigValue<String> REPORT_API_KEY = BUILDER
-        .comment("Optional public/anon API key for the compatibility report endpoint.",
+        .comment("Public/anon API key for the compatibility report endpoint.",
             "Never put a Supabase service-role key here.")
-        .define("compatibility.reportApiKey", "");
+        .define("compatibility.reportApiKey", Config.DEFAULT_COMPATIBILITY_RULES_API_KEY);
 
     private static final ModConfigSpec.ConfigValue<String> RULES_ENDPOINT = BUILDER
         .comment(
