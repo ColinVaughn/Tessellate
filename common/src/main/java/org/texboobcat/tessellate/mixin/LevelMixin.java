@@ -156,7 +156,7 @@ public abstract class LevelMixin implements LevelRegionIndex.RegionalLevelAccess
             return;
         }
         ChunkAccess chunk = ((LevelRegionIndex.RegionalChunkAccess) level.getChunkSource())
-            .tessellate$getChunkForWorker(x, z, status);
+            .tessellate$getChunkForWorker(x, z, status, load);
         if (chunk == null && load) {
             throw new IllegalStateException("Should always be able to create a chunk!");
         }

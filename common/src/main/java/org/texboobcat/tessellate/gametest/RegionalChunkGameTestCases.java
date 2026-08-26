@@ -19,6 +19,7 @@ import net.minecraft.world.level.block.entity.BellBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.pathfinder.PathType;
 import net.minecraft.world.level.pathfinder.PathTypeCache;
 import net.minecraft.world.ticks.ScheduledTick;
@@ -114,6 +115,11 @@ public final class RegionalChunkGameTestCases {
             () -> level.updateNeighbourForOutputSignal(outputPos, Blocks.STONE), () -> { }));
         helper.assertTrue(RegionTracker.unavailableChunks() == unavailableBefore,
             "output-signal check requested its unloaded adjacent chunk");
+        RegionWorkers.runAllAndWait(List.of(() -> level.getChunk(
+            remoteChunkX + 1, remoteChunkZ, ChunkStatus.FULL, false), () -> { }));
+        helper.assertTrue(RegionTracker.unavailableChunks() == unavailableBefore
+                && RegionTracker.parallelAllowed(),
+            "a non-loading chunk probe degraded region ticking");
 
         MainThreadBoundaries.Snapshot sectionBefore = MainThreadBoundaries.snapshot(
             MainThreadBoundaries.Boundary.ENTITY_LIFECYCLE);

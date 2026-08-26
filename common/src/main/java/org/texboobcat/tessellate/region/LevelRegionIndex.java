@@ -57,7 +57,8 @@ public final class LevelRegionIndex implements RegionizerListener {
     public interface RegionalChunkAccess {
         void tessellate$prepareRegionalChunks(LevelRegionIndex index);
         RegionalChunkWork tessellate$regionalChunkWork();
-        @Nullable ChunkAccess tessellate$getChunkForWorker(int x, int z, ChunkStatus status);
+        @Nullable ChunkAccess tessellate$getChunkForWorker(int x, int z, ChunkStatus status,
+                                                           boolean load);
     }
 
     // Immutable chunk work captured before a region task is dispatched.
