@@ -6,7 +6,9 @@ import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.Util;
 import net.minecraft.server.level.ChunkHolder;
 import net.minecraft.server.level.ChunkMap;
+import net.minecraft.server.level.ChunkResult;
 import net.minecraft.server.level.DistanceManager;
+import net.minecraft.server.level.GenerationChunkHolder;
 import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
@@ -43,6 +45,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
 import javax.annotation.Nullable;
@@ -501,6 +504,20 @@ public abstract class ServerChunkCacheMixin implements LevelRegionIndex.Regional
         }
 
         cir.setReturnValue(tessellate$getChunkForWorker(x, z, status, load));
+    }
+
+    // The future API otherwise queues getChunkFutureMainThread, which can re-enter
+    // DistanceManager while the server thread is already draining its priority graph.
+    @Inject(method = "getChunkFuture", at = @At("HEAD"), cancellable = true)
+    private void tessellate$workerChunkFuture(int x, int z, ChunkStatus status, boolean load,
+            CallbackInfoReturnable<CompletableFuture<ChunkResult<ChunkAccess>>> cir) {
+        if (!RegionWorkers.isWorkerThread()) {
+            return;
+        }
+        ChunkAccess chunk = tessellate$getChunkForWorker(x, z, status, load);
+        cir.setReturnValue(chunk == null
+            ? GenerationChunkHolder.UNLOADED_CHUNK_FUTURE
+            : CompletableFuture.completedFuture(ChunkResult.of(chunk)));
     }
 
     @Override
