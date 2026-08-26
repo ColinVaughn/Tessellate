@@ -51,6 +51,7 @@ public final class RegionalChunkGameTestCases {
     private RegionalChunkGameTestCases() {
     }
 
+    @SuppressWarnings("PMD.NcssCount")
     public static void mainThreadBoundaryHandoffs(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
         LevelRegionIndex index = RegionTracker.index(level);
@@ -121,6 +122,8 @@ public final class RegionalChunkGameTestCases {
                 && RegionTracker.parallelAllowed(),
             "a non-loading chunk probe degraded region ticking");
 
+        assertWorkerChunkFuture(helper, level, start);
+
         MainThreadBoundaries.Snapshot sectionBefore = MainThreadBoundaries.snapshot(
             MainThreadBoundaries.Boundary.ENTITY_LIFECYCLE);
         double targetY = entity.getY() + 16.0;
@@ -150,6 +153,22 @@ public final class RegionalChunkGameTestCases {
         entity.discard();
         spawned.discard();
         helper.succeed();
+    }
+
+    private static void assertWorkerChunkFuture(GameTestHelper helper, ServerLevel level,
+                                                BlockPos loadedPos) {
+        AtomicBoolean completed = new AtomicBoolean();
+        AtomicBoolean succeeded = new AtomicBoolean();
+        RegionWorkers.runAllAndWait(List.of(() -> {
+            var future = level.getChunkSource().getChunkFuture(
+                loadedPos.getX() >> 4, loadedPos.getZ() >> 4, ChunkStatus.FULL, true);
+            completed.set(future.isDone());
+            if (future.isDone()) {
+                future.join().ifSuccess(ignored -> succeeded.set(true));
+            }
+        }, () -> { }));
+        helper.assertTrue(completed.get() && succeeded.get(),
+            "a worker chunk future escaped to the main-thread distance manager");
     }
 
     public static void compatibilityApiRunsOnLiveOwners(GameTestHelper helper) {
