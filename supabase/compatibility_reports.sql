@@ -6,6 +6,7 @@ create table if not exists public.tessellate_compatibility_reports (
     loader text not null,
     component text not null,
     event_kind text not null,
+    fallback_reason_code text,
     failure_class text,
     entity_type_id text,
     block_entity_type_id text,
@@ -26,6 +27,8 @@ create table if not exists public.tessellate_compatibility_reports (
         and length(minecraft_version) <= 64
         and length(component) <= 64
         and length(event_kind) <= 64
+        and (fallback_reason_code is null
+            or fallback_reason_code ~ '^[a-z][a-z0-9_]{0,63}$')
         and coalesce(length(failure_class), 0) <= 256
         and coalesce(length(entity_type_id), 0) <= 256
         and coalesce(length(block_entity_type_id), 0) <= 256
@@ -42,6 +45,9 @@ alter table public.tessellate_compatibility_reports
     add column if not exists block_entity_type_id text;
 
 alter table public.tessellate_compatibility_reports
+    add column if not exists fallback_reason_code text;
+
+alter table public.tessellate_compatibility_reports
     drop constraint if exists compatibility_payload_bounds;
 alter table public.tessellate_compatibility_reports
     add constraint compatibility_payload_bounds check (
@@ -49,6 +55,8 @@ alter table public.tessellate_compatibility_reports
         and length(minecraft_version) <= 64
         and length(component) <= 64
         and length(event_kind) <= 64
+        and (fallback_reason_code is null
+            or fallback_reason_code ~ '^[a-z][a-z0-9_]{0,63}$')
         and coalesce(length(failure_class), 0) <= 256
         and coalesce(length(entity_type_id), 0) <= 256
         and coalesce(length(block_entity_type_id), 0) <= 256
@@ -145,7 +153,7 @@ begin
 
     insert into public.tessellate_compatibility_reports (
         event_id, tessellate_version, minecraft_version, loader, component, event_kind,
-        failure_class, entity_type_id, block_entity_type_id, suspected_mod_id,
+        fallback_reason_code, failure_class, entity_type_id, block_entity_type_id, suspected_mod_id,
         suspected_mod_version, suspected_frame, loaded_mods
     ) values (
         (p_report ->> 'event_id')::uuid,
@@ -154,6 +162,7 @@ begin
         p_report ->> 'loader',
         p_report ->> 'component',
         p_report ->> 'event_kind',
+        p_report ->> 'fallback_reason_code',
         p_report ->> 'failure_class',
         p_report ->> 'entity_type_id',
         p_report ->> 'block_entity_type_id',
@@ -286,6 +295,7 @@ with candidates as (
         count(*) as failure_count,
         min(received_at) as first_seen,
         max(received_at) as last_seen,
+        array_agg(distinct component) as components,
         array_remove(array_agg(distinct failure_class), null) as failure_classes,
         array_agg(distinct tessellate_version) as tessellate_versions,
         (array_agg(suspected_frame order by received_at desc)
@@ -293,6 +303,18 @@ with candidates as (
     from public.tessellate_compatibility_reports
     where suspected_mod_id is not null and entity_type_id is not null
     group by suspected_mod_id, suspected_mod_version, loader, entity_type_id
+), matching_rules as (
+    select mod_id, mod_version, loader, entity_type_id, enabled,
+        null::text[] as covered_components
+    from public.tessellate_entity_compatibility_rules
+    union all
+    select mod_id, mod_version, loader, null, enabled,
+        case action
+            when 'force_serial_regions' then array['region-worker', 'region-ticking']
+            when 'disable_parallel_spawning' then array['natural-spawning']
+        end
+    from public.tessellate_mod_compatibility_rules
+    where action in ('force_serial_regions', 'disable_parallel_spawning')
 )
 select
     candidates.mod_id,
@@ -328,9 +350,11 @@ select
         'confirmed from compatibility reports'
     ) as promotion_sql
 from candidates
-left join public.tessellate_entity_compatibility_rules as rules
+left join matching_rules as rules
     on rules.mod_id = candidates.mod_id
-    and rules.entity_type_id = candidates.entity_type_id
+    and (rules.entity_type_id = candidates.entity_type_id
+        or (rules.entity_type_id is null
+            and candidates.components <@ rules.covered_components))
     and (rules.mod_version = '*' or rules.mod_version = candidates.mod_version)
     and (rules.loader = 'any' or rules.loader = candidates.loader)
 group by
@@ -350,7 +374,7 @@ revoke all on public.tessellate_entity_compatibility_candidates
     from public, anon, authenticated;
 
 comment on view public.tessellate_entity_compatibility_candidates is
-    'Entity failure candidates grouped by mod/version/loader with curated rule status.';
+    'Entity failure candidates with status from entity rules or covering subsystem rules.';
 
 create or replace view public.tessellate_mod_compatibility_candidates
 with (security_invoker = true)

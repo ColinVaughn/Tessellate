@@ -410,15 +410,26 @@ public final class ParallelNaturalSpawner {
     }
 
     public static void degradeToSerial(String reason) {
-        degradeToSerial(reason, null);
+        degradeToSerial("unknown_safety_check", reason, null);
     }
 
     public static void degradeToSerial(String reason, @Nullable Throwable failure) {
+        degradeToSerial(failure == null ? "unknown_safety_check" : "worker_exception",
+            reason, failure);
+    }
+
+    public static void degradeToSerial(String reasonCode, String reason) {
+        degradeToSerial(reasonCode, reason, null);
+    }
+
+    private static void degradeToSerial(String reasonCode, String reason,
+                                        @Nullable Throwable failure) {
         if (parallelAllowed) {
             parallelAllowed = false;
             degradeReason = reason;
             CompatibilityReporter.report("natural-spawning", "serial-fallback",
-                "falling back to serial natural spawning for this session: " + reason, failure);
+                "falling back to serial natural spawning for this session: " + reason, failure,
+                reasonCode);
         }
     }
 

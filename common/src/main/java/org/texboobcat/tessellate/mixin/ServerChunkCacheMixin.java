@@ -518,8 +518,9 @@ public abstract class ServerChunkCacheMixin implements LevelRegionIndex.Regional
         // A requested load would block this worker on the main thread, which is waiting for it.
         if (load) {
             if (ParallelNaturalSpawner.active()) {
-                ParallelNaturalSpawner.degradeToSerial("a natural-spawn worker needed unloaded "
-                    + "chunk [" + x + ", " + z + "] at status " + status);
+                ParallelNaturalSpawner.degradeToSerial("unloaded_chunk",
+                    "a natural-spawn worker needed unloaded chunk [" + x + ", " + z
+                        + "] at status " + status);
             } else {
                 RegionTracker.reportUnavailableChunk(x, z, status);
             }

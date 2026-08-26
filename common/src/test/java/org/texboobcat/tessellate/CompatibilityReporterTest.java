@@ -1,9 +1,14 @@
 package org.texboobcat.tessellate;
 
+import dev.architectury.platform.Mod;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.lang.reflect.Proxy;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -34,13 +39,14 @@ class CompatibilityReporterTest {
     void reportJsonEscapesStringsAndKeepsNullAttribution() {
         var report = new CompatibilityReporter.Report(
             "event", "1.2.4", "1.21.1", "fabric", "region-worker", "serial-fallback",
-            "java.lang.IllegalStateException", null, null,
+            "scheduled_tick_cross_region", "java.lang.IllegalStateException", null, null,
             new CompatibilityReporter.Suspect(null, null, "bad.Mod.tick(Mod.java:4)\nnext"),
             List.of(new CompatibilityReporter.InstalledMod("example", "1\"2")));
 
         assertEquals("{\"event_id\":\"event\",\"tessellate_version\":\"1.2.4\","
             + "\"minecraft_version\":\"1.21.1\",\"loader\":\"fabric\","
             + "\"component\":\"region-worker\",\"event_kind\":\"serial-fallback\","
+            + "\"fallback_reason_code\":\"scheduled_tick_cross_region\","
             + "\"failure_class\":\"java.lang.IllegalStateException\","
             + "\"entity_type_id\":null,"
             + "\"block_entity_type_id\":null,"
@@ -85,6 +91,30 @@ class CompatibilityReporterTest {
         assertEquals(List.of("example"), matching.serializeEntityTickMods());
         assertEquals(List.of("example"), matching.serialNaturalSpawningMods());
         assertEquals(List.of("example"), matching.serialRegionMods());
+    }
+
+    @Test
+    void sharedHybridRootWinsOverFrameworkOwner(@TempDir Path root) throws Exception {
+        String className = "io.papermc.paper.plugin.manager.PaperEventManager";
+        Path classFile = root.resolve(className.replace('.', '/') + ".class");
+        Files.createDirectories(classFile.getParent());
+        Files.createFile(classFile);
+
+        Mod neoforge = mod("neoforge", root);
+        Mod youer = mod("youer", root);
+        assertEquals("youer", CompatibilityReporter.owningMod(
+            className, List.of(neoforge, youer)).getModId());
+        assertEquals("neoforge", CompatibilityReporter.owningMod(
+            className, List.of(neoforge)).getModId());
+    }
+
+    private static Mod mod(String id, Path root) {
+        return (Mod) Proxy.newProxyInstance(Mod.class.getClassLoader(),
+            new Class<?>[]{Mod.class}, (proxy, method, args) -> switch (method.getName()) {
+                case "getModId" -> id;
+                case "getFilePaths" -> List.of(root);
+                default -> throw new UnsupportedOperationException(method.getName());
+            });
     }
 
     private static void assertEmpty(CompatibilityReporter.RemoteRules rules) {
