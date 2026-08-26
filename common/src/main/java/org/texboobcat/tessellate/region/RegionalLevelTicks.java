@@ -187,6 +187,7 @@ public final class RegionalLevelTicks<T> extends LevelTicks<T> {
         if (RegionWorkers.isWorkerThread()) {
             LevelTicks<T> child = activeChild();
             RegionTracker.degradeToSerial(
+                "scheduled_tick_global_count",
                 "a region worker queried the level-wide scheduled-tick count");
             return child == null ? 0 : locked(child, child::count);
         }
@@ -250,8 +251,9 @@ public final class RegionalLevelTicks<T> extends LevelTicks<T> {
         if (bound != null && owned.regionId() == bound.id()) {
             return true;
         }
-        RegionTracker.degradeToSerial("a region worker queried scheduled ticks owned by "
-            + (owned.regionId() < 0 ? "the unowned scheduler" : "region#" + owned.regionId()));
+        RegionTracker.degradeToSerial("scheduled_tick_cross_region",
+            "a region worker queried scheduled ticks owned by "
+                + (owned.regionId() < 0 ? "the unowned scheduler" : "region#" + owned.regionId()));
         return false;
     }
 

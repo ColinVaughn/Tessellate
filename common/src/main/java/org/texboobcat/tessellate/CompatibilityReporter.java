@@ -24,6 +24,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
 
@@ -38,6 +39,8 @@ public final class CompatibilityReporter {
         "java.", "jdk.", "sun.", "net.minecraft.", "net.fabricmc.", "net.neoforged.",
         "dev.architectury.", "com.mojang.", "org.spongepowered.",
         "org.texboobcat.tessellate.");
+    private static final Set<String> FRAMEWORK_MOD_IDS = Set.of(
+        "minecraft", "neoforge", "forge", "fabricloader", "quilt_loader");
 
     private CompatibilityReporter() {
     }
@@ -105,6 +108,12 @@ public final class CompatibilityReporter {
 
     public static void report(String component, String eventKind, String reason,
                               @Nullable Throwable failure) {
+        report(component, eventKind, reason, failure, null);
+    }
+
+    public static void report(String component, String eventKind, String reason,
+                              @Nullable Throwable failure,
+                              @Nullable String fallbackReasonCode) {
         LOGGER.error("tessellate: {}", reason);
         try {
             List<Mod> mods = Platform.getMods().stream()
@@ -121,7 +130,7 @@ public final class CompatibilityReporter {
             Report report = new Report(UUID.randomUUID().toString(),
                 Platform.getMod(Tessellate.MODID).getVersion(), Platform.getMinecraftVersion(),
                 Platform.isFabric() ? "fabric" : "neoforge", component, eventKind,
-                failureClass(failure),
+                fallbackReasonCode, failureClass(failure),
                 CompatibilityTicks.failedEntityTypeId(failure),
                 CompatibilityTicks.failedBlockEntityTypeId(failure), suspect,
                 mods.stream().map(mod -> new InstalledMod(mod.getModId(), mod.getVersion())).toList());
@@ -173,18 +182,22 @@ public final class CompatibilityReporter {
     }
 
     @Nullable
-    private static Mod owningMod(String className, List<Mod> mods) {
+    static Mod owningMod(String className, List<Mod> mods) {
         String classFile = className.replace('.', '/') + ".class";
+        Mod frameworkOwner = null;
         for (Mod mod : mods) {
             try {
                 if (mod.getFilePaths().stream().anyMatch(root -> Files.exists(root.resolve(classFile)))) {
-                    return mod;
+                    if (!FRAMEWORK_MOD_IDS.contains(mod.getModId())) {
+                        return mod;
+                    }
+                    frameworkOwner = mod;
                 }
             } catch (RuntimeException ignored) {
                 // A broken or synthetic mod root must not hide the original server failure.
             }
         }
-        return null;
+        return frameworkOwner;
     }
 
     private static void send(Report report) {
@@ -315,6 +328,7 @@ public final class CompatibilityReporter {
         field(json, "loader", report.loader()).append(',');
         field(json, "component", report.component()).append(',');
         field(json, "event_kind", report.eventKind()).append(',');
+        field(json, "fallback_reason_code", report.fallbackReasonCode()).append(',');
         field(json, "failure_class", report.failureClass()).append(',');
         field(json, "entity_type_id", report.entityTypeId()).append(',');
         field(json, "block_entity_type_id", report.blockEntityTypeId()).append(',');
@@ -404,7 +418,8 @@ public final class CompatibilityReporter {
 
     record Report(String eventId, String tessellateVersion, String minecraftVersion,
                   String loader, String component, String eventKind,
-                  @Nullable String failureClass, @Nullable String entityTypeId,
+                  @Nullable String fallbackReasonCode, @Nullable String failureClass,
+                  @Nullable String entityTypeId,
                   @Nullable String blockEntityTypeId, Suspect suspect,
                   List<InstalledMod> loadedMods) {
     }

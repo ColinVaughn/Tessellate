@@ -181,15 +181,26 @@ public final class RegionTracker {
     // and flapping between modes would make the failure far harder to diagnose than simply
     // running single-threaded for the rest of the session.
     public static void degradeToSerial(String reason) {
-        degradeToSerial(reason, null);
+        degradeToSerial("unknown_safety_check", reason, null);
     }
 
     public static void degradeToSerial(String reason, @Nullable Throwable failure) {
+        degradeToSerial(failure == null ? "unknown_safety_check" : "worker_exception",
+            reason, failure);
+    }
+
+    public static void degradeToSerial(String reasonCode, String reason) {
+        degradeToSerial(reasonCode, reason, null);
+    }
+
+    private static void degradeToSerial(String reasonCode, String reason,
+                                        @Nullable Throwable failure) {
         if (parallelAllowed) {
             parallelAllowed = false;
             degradeReason = reason;
             CompatibilityReporter.report("region-ticking", "serial-fallback",
-                "falling back to serial region ticking for this session: " + reason, failure);
+                "falling back to serial region ticking for this session: " + reason, failure,
+                reasonCode);
         }
     }
 
@@ -207,8 +218,9 @@ public final class RegionTracker {
     // only safe response is to stop ticking in parallel.
     public static void reportUnavailableChunk(int chunkX, int chunkZ, Object status) {
         UNAVAILABLE_CHUNKS.incrementAndGet();
-        degradeToSerial("a region worker needed chunk [" + chunkX + ", " + chunkZ + "] at status "
-            + status + ", which was not loaded. Fetching it would have required the main thread.");
+        degradeToSerial("unloaded_chunk", "a region worker needed chunk [" + chunkX + ", "
+            + chunkZ + "] at status " + status + ", which was not loaded. Fetching it would "
+            + "have required the main thread.");
     }
 
     public static void reset() {
