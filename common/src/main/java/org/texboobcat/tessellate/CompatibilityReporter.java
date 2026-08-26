@@ -7,7 +7,11 @@ import com.google.gson.JsonParser;
 import com.mojang.logging.LogUtils;
 import dev.architectury.platform.Mod;
 import dev.architectury.platform.Platform;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
 import org.slf4j.Logger;
 import org.texboobcat.tessellate.region.CompatibilityTicks;
 
@@ -41,8 +45,14 @@ public final class CompatibilityReporter {
         "org.texboobcat.tessellate.");
     private static final Set<String> FRAMEWORK_MOD_IDS = Set.of(
         "minecraft", "neoforge", "forge", "fabricloader", "quilt_loader");
+    @Nullable
+    private static volatile MinecraftServer server;
 
     private CompatibilityReporter() {
+    }
+
+    static void setServer(@Nullable MinecraftServer server) {
+        CompatibilityReporter.server = server;
     }
 
     public static List<String> loadedForcedSerialMods() {
@@ -124,9 +134,6 @@ public final class CompatibilityReporter {
                 suspect.modId() == null ? "unknown" : suspect.modId(),
                 suspect.frame() == null ? "unknown" : suspect.frame());
 
-            if (Config.compatibilityReportEndpoint.isBlank()) {
-                return;
-            }
             Report report = new Report(UUID.randomUUID().toString(),
                 Platform.getMod(Tessellate.MODID).getVersion(), Platform.getMinecraftVersion(),
                 Platform.isFabric() ? "fabric" : "neoforge", component, eventKind,
@@ -134,10 +141,70 @@ public final class CompatibilityReporter {
                 CompatibilityTicks.failedEntityTypeId(failure),
                 CompatibilityTicks.failedBlockEntityTypeId(failure), suspect,
                 mods.stream().map(mod -> new InstalledMod(mod.getModId(), mod.getVersion())).toList());
-            send(report);
+            notifyPlayers(report, reason);
+            if (!Config.compatibilityReportEndpoint.isBlank()) {
+                send(report);
+            }
         } catch (RuntimeException | LinkageError reportFailure) {
             LOGGER.warn("tessellate: could not create compatibility report", reportFailure);
         }
+    }
+
+    private static void notifyPlayers(Report report, String reason) {
+        MinecraftServer currentServer = server;
+        if (!"serial-fallback".equals(report.eventKind()) || currentServer == null) {
+            return;
+        }
+        String mod = report.suspect().modId() == null ? "unknown"
+            : report.suspect().modId() + " " + report.suspect().modVersion();
+        Component message = Component.literal("Tessellate fell back to serial execution for "
+                + report.component() + ". Suspected mod: " + mod + ". ")
+            .withStyle(ChatFormatting.RED)
+            .append(Component.literal("[Copy compatibility report]")
+                .withStyle(style -> style.withColor(ChatFormatting.YELLOW).withUnderlined(true)
+                    .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD,
+                        issueReport(report, reason)))));
+        currentServer.execute(() -> currentServer.getPlayerList()
+            .broadcastSystemMessage(message, false));
+    }
+
+    static String issueReport(Report report, String reason) {
+        return """
+            ### Tessellate compatibility report
+
+            Tessellate fell back to serial execution while running `%s`.
+
+            - Suspected mod: `%s` `%s`
+            - Minecraft: `%s`
+            - Loader: `%s`
+            - Tessellate: `%s`
+            - Reason code: `%s`
+            - Failure: `%s`
+            - Suspected frame: `%s`
+            - Affected entity type: `%s`
+            - Affected block entity type: `%s`
+            - Event ID: `%s`
+
+            Reason: %s
+
+            ### Compatibility guidance
+
+            Prefer moving only the unsafe operation: use `TessellateApi.executeOnRegion(level, pos, work)` for world access owned by another region, or `TessellateApi.executeOnMainThread(work)` for main-thread-only state. If the whole type is unsafe, register only the affected type during mod initialization with `TessellateApi.registerMainThreadEntity(type)` or `TessellateApi.registerMainThreadBlockEntity(type)`.
+
+            - GitHub compatibility guide: https://github.com/ColinVaughn/Tessellate#compatibility
+            - Tessellate Discord: https://discord.gg/dPY6zmHtr5
+
+            _The suspected mod was detected automatically from the failing stack frame._
+            """.formatted(report.component(), unknown(report.suspect().modId()),
+                unknown(report.suspect().modVersion()), report.minecraftVersion(), report.loader(),
+                report.tessellateVersion(), unknown(report.fallbackReasonCode()),
+                unknown(report.failureClass()), unknown(report.suspect().frame()),
+                unknown(report.entityTypeId()), unknown(report.blockEntityTypeId()),
+                report.eventId(), reason);
+    }
+
+    private static String unknown(@Nullable String value) {
+        return value == null ? "unknown" : value;
     }
 
     @Nullable

@@ -57,6 +57,26 @@ class CompatibilityReporterTest {
     }
 
     @Test
+    void issueReportIsReadyToPasteIntoTheSuspectedModsRepository() {
+        var report = new CompatibilityReporter.Report(
+            "event", "1.2.10", "1.21.1", "neoforge", "region-ticking",
+            "serial-fallback", "worker_exception", "example.Failure", null, "example:machine",
+            new CompatibilityReporter.Suspect("example", "2.0", "example.Mod.tick(Mod.java:4)"),
+            List.of(new CompatibilityReporter.InstalledMod("example", "2.0")));
+
+        String issue = CompatibilityReporter.issueReport(report, "region worker failed");
+
+        assertTrue(issue.contains("Suspected mod: `example` `2.0`"));
+        assertTrue(issue.contains("Reason code: `worker_exception`"));
+        assertTrue(issue.contains("Affected block entity type: `example:machine`"));
+        assertTrue(issue.contains("TessellateApi.executeOnRegion(level, pos, work)"));
+        assertTrue(issue.contains("https://github.com/ColinVaughn/Tessellate#compatibility"));
+        assertTrue(issue.contains("https://discord.gg/dPY6zmHtr5"));
+        assertTrue(issue.contains("Event ID: `event`"));
+        assertTrue(issue.contains("Reason: region worker failed"));
+    }
+
+    @Test
     void rulesMatchOnlyLoadedModVersionAndLoader() {
         String rules = """
             [

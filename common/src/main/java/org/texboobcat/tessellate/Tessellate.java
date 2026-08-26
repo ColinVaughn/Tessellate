@@ -47,9 +47,13 @@ public final class Tessellate {
             TessellateCommand.tickVisualization(serverLevel);
         });
 
-        LifecycleEvent.SERVER_STARTED.register(server -> applyRemoteCompatibilityRules());
+        LifecycleEvent.SERVER_STARTED.register(server -> {
+            CompatibilityReporter.setServer(server);
+            applyRemoteCompatibilityRules();
+        });
 
         LifecycleEvent.SERVER_STOPPED.register(server -> {
+            CompatibilityReporter.setServer(null);
             RegionWorkers.stop();
             RegionTracker.reset();
             TessellateApiInternal.configureRemoteMainThreadEntities(java.util.List.of());
