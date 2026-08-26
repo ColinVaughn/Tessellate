@@ -326,6 +326,17 @@ unknown. Block entities have the same safety fallback:
 TessellateApi.registerMainThreadBlockEntity(MyBlockEntityTypes.MACHINE.get());
 ```
 
+Treat whole-type registration as a safety fallback, not the normal compatibility fix. Most mods can
+keep mob ticks parallel by fixing their shared state and isolating only the unsafe operation. A
+`ConcurrentHashMap` can solve independent map-access races, but changing the collection alone does
+not make compound read/modify/write sequences, iteration plus mutation, or invariants spanning
+several objects thread-safe.
+
+Prefer clear ownership, atomic operations, a lock around the full invariant, immutable snapshots,
+or the appropriate `executeOnRegion`/`executeOnMainThread` boundary. Use
+`registerMainThreadEntity` only when the entire tick truly cannot be made safe; most mobs should not
+need it after the underlying code is corrected.
+
 If only one operation is unsafe, keep the entity tick parallel and hand off just that operation:
 
 ```java
