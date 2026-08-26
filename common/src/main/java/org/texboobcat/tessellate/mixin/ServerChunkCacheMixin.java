@@ -500,12 +500,13 @@ public abstract class ServerChunkCacheMixin implements LevelRegionIndex.Regional
             return;
         }
 
-        cir.setReturnValue(tessellate$getChunkForWorker(x, z, status));
+        cir.setReturnValue(tessellate$getChunkForWorker(x, z, status, load));
     }
 
     @Override
     @Nullable
-    public ChunkAccess tessellate$getChunkForWorker(int x, int z, ChunkStatus status) {
+    public ChunkAccess tessellate$getChunkForWorker(int x, int z, ChunkStatus status,
+                                                    boolean load) {
         ChunkHolder holder = this.tessellate$getVisibleChunkIfPresent(ChunkPos.asLong(x, z));
         if (holder != null) {
             ChunkAccess chunk = holder.getChunkIfPresent(status);
@@ -514,13 +515,14 @@ public abstract class ServerChunkCacheMixin implements LevelRegionIndex.Regional
             }
         }
 
-        // Not loaded. Falling through would block this worker on the main thread, which is
-        // waiting for it.
-        if (ParallelNaturalSpawner.active()) {
-            ParallelNaturalSpawner.degradeToSerial("a natural-spawn worker needed unloaded "
-                + "chunk [" + x + ", " + z + "] at status " + status);
-        } else {
-            RegionTracker.reportUnavailableChunk(x, z, status);
+        // A requested load would block this worker on the main thread, which is waiting for it.
+        if (load) {
+            if (ParallelNaturalSpawner.active()) {
+                ParallelNaturalSpawner.degradeToSerial("a natural-spawn worker needed unloaded "
+                    + "chunk [" + x + ", " + z + "] at status " + status);
+            } else {
+                RegionTracker.reportUnavailableChunk(x, z, status);
+            }
         }
         return null;
     }
