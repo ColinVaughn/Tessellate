@@ -506,6 +506,17 @@ public abstract class ServerChunkCacheMixin implements LevelRegionIndex.Regional
         cir.setReturnValue(tessellate$getChunkForWorker(x, z, status, load));
     }
 
+    // Vanilla rejects every off-thread getChunkNow call before checking loaded chunks.
+    @Inject(method = "getChunkNow", at = @At("HEAD"), cancellable = true)
+    private void tessellate$workerChunkNow(int x, int z,
+            CallbackInfoReturnable<LevelChunk> cir) {
+        if (!RegionWorkers.isWorkerThread()) {
+            return;
+        }
+        ChunkAccess chunk = tessellate$getChunkForWorker(x, z, ChunkStatus.FULL, false);
+        cir.setReturnValue(chunk instanceof LevelChunk levelChunk ? levelChunk : null);
+    }
+
     // The future API otherwise queues getChunkFutureMainThread, which can re-enter
     // DistanceManager while the server thread is already draining its priority graph.
     @Inject(method = "getChunkFuture", at = @At("HEAD"), cancellable = true)
