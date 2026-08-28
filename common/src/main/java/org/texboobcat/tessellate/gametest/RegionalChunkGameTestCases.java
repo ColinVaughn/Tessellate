@@ -427,15 +427,18 @@ public final class RegionalChunkGameTestCases {
             AtomicInteger stateChecks = new AtomicInteger();
             AtomicInteger blockedChecks = new AtomicInteger();
             AtomicInteger openChecks = new AtomicInteger();
+            AtomicInteger reachablePaths = new AtomicInteger();
             PathTypeCache cache = level.getPathTypeCache();
             BlockPos blocked = helper.absolutePos(new BlockPos(2, 0, 2));
             BlockPos open = blocked.above();
             try {
                 RegionWorkers.runAllAndWait(List.of(
                     () -> findPathsTogether(first, helper.absolutePos(new BlockPos(3, 1, 3)),
-                        ready, cache, level, blocked, open, stateChecks, blockedChecks, openChecks),
+                        ready, cache, level, blocked, open, stateChecks, blockedChecks, openChecks,
+                        reachablePaths),
                     () -> findPathsTogether(second, helper.absolutePos(new BlockPos(1, 1, 1)),
-                        ready, cache, level, blocked, open, stateChecks, blockedChecks, openChecks)));
+                        ready, cache, level, blocked, open, stateChecks, blockedChecks, openChecks,
+                        reachablePaths)));
 
                 PhaseStats.Snapshot after = PhaseStats.snapshot(PhaseStats.Phase.PATHFINDING);
                 helper.assertTrue(stateChecks.get() == 64 && blockedChecks.get() == 64
@@ -445,6 +448,9 @@ public final class RegionalChunkGameTestCases {
                         + openChecks.get() + "/64");
                 helper.assertTrue(after.workerCalls() - before.workerCalls() >= 64,
                     "path searches did not run on region workers: " + after);
+                helper.assertTrue(reachablePaths.get() == 64,
+                    "region-worker path searches could not reach their targets: "
+                        + reachablePaths.get() + "/64");
                 helper.assertTrue(after.maxConcurrent() >= 2,
                     "path searches remained serialized: " + after);
                 helper.assertTrue(after.failures() == before.failures(),
@@ -654,7 +660,8 @@ public final class RegionalChunkGameTestCases {
     private static void findPathsTogether(Mob mob, BlockPos target, CountDownLatch ready,
                                            PathTypeCache cache, ServerLevel level, BlockPos blocked,
                                            BlockPos open, AtomicInteger stateChecks,
-                                           AtomicInteger blockedChecks, AtomicInteger openChecks) {
+                                           AtomicInteger blockedChecks, AtomicInteger openChecks,
+                                           AtomicInteger reachablePaths) {
         ready.countDown();
         try {
             if (!ready.await(10, TimeUnit.SECONDS)) {
@@ -678,7 +685,10 @@ public final class RegionalChunkGameTestCases {
                 openChecks.incrementAndGet();
             }
             mob.getNavigation().stop();
-            mob.getNavigation().createPath(Set.of(target), 0);
+            var path = mob.getNavigation().createPath(Set.of(target), 0);
+            if (path != null && path.canReach()) {
+                reachablePaths.incrementAndGet();
+            }
         }
     }
 
