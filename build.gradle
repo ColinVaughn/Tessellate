@@ -59,7 +59,7 @@ subprojects {
         testImplementation platform('org.junit:junit-bom:5.10.2')
         testImplementation 'org.junit.jupiter:junit-jupiter'
         testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-        testImplementation 'it.unimi.dsi:fastutil:8.5.12'
+        testImplementation 'it.unimi.dsi:fastutil:8.5.19'
     }
 
     tasks.withType(JavaCompile).configureEach {
