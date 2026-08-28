@@ -1,5 +1,6 @@
 package org.texboobcat.tessellate.mixin;
 
+import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.mojang.logging.LogUtils;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
@@ -97,6 +98,15 @@ public abstract class ServerChunkCacheMixin implements LevelRegionIndex.Regional
         tessellate$prepareRegionalChunks(index);
         ci.cancel();
     }
+
+    @ModifyExpressionValue(
+            method = "getChunkNow",
+            at = @At(value = "FIELD", target = "Lnet/minecraft/server/level/ServerChunkCache;mainThread:Ljava/lang/Thread;")
+    )
+    private Thread tesselate$bypassThreadCheck(Thread originalMainThread) {
+        return Thread.currentThread();
+    }
+
 
     @Override
     public void tessellate$prepareRegionalChunks(LevelRegionIndex index) {
