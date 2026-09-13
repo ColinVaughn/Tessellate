@@ -127,18 +127,21 @@ public abstract class LevelMixin implements LevelRegionIndex.RegionalLevelAccess
         }
     }
 
-    // Vanilla guards the first comparator-neighbor read but not the block behind a conductor.
+    // hasChunkAt checks tickets, which can precede FULL availability. Probe both comparator
+    // reads without loading, including the unguarded read behind a conductor.
     @Redirect(
         method = "updateNeighbourForOutputSignal",
         at = @At(
             value = "INVOKE",
             target = "Lnet/minecraft/world/level/Level;getBlockState(Lnet/minecraft/core/BlockPos;)"
-                + "Lnet/minecraft/world/level/block/state/BlockState;",
-            ordinal = 1))
+                + "Lnet/minecraft/world/level/block/state/BlockState;"))
     private BlockState tessellate$skipUnloadedOutputSignalChunk(Level level, BlockPos pos) {
-        return RegionWorkers.isWorkerThread() && !level.hasChunkAt(pos)
-            ? Blocks.VOID_AIR.defaultBlockState()
-            : level.getBlockState(pos);
+        if (!RegionWorkers.isWorkerThread()) {
+            return level.getBlockState(pos);
+        }
+        ChunkAccess chunk = level.getChunkSource().getChunk(
+            pos.getX() >> 4, pos.getZ() >> 4, ChunkStatus.FULL, false);
+        return chunk == null ? Blocks.VOID_AIR.defaultBlockState() : chunk.getBlockState(pos);
     }
 
     // Answer before ServerChunkCache so compatibility mods cannot wrap an already-loaded worker

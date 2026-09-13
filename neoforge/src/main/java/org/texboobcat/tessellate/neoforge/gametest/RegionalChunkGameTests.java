@@ -24,6 +24,26 @@ public final class RegionalChunkGameTests {
     private RegionalChunkGameTests() {
     }
 
+    @GameTest(template = "bastion/blocks/air", timeoutTicks = 400, batch = "redstone-ownership")
+    public static void loadedUnownedRedstoneUpdates(GameTestHelper helper) {
+        org.texboobcat.tessellate.gametest.RedstoneGameTestCases.loadedUnownedUpdates(helper);
+    }
+
+    @GameTest(template = "bastion/blocks/air", timeoutTicks = 400, batch = "redstone-torches")
+    public static void torchBurnoutStaysLocal(GameTestHelper helper) {
+        org.texboobcat.tessellate.gametest.RedstoneGameTestCases.torchBurnoutStaysLocal(helper);
+    }
+
+    @GameTest(template = "bastion/blocks/air", timeoutTicks = 200, batch = "redstone-boundary")
+    public static void unloadedRedstoneUpdates(GameTestHelper helper) {
+        org.texboobcat.tessellate.gametest.RedstoneGameTestCases.unloadedUpdates(helper);
+    }
+
+    @GameTest(template = "bastion/blocks/air", timeoutTicks = 400, batch = "redstone-circuits")
+    public static void redstoneCircuitsAndConcurrentSignals(GameTestHelper helper) {
+        org.texboobcat.tessellate.gametest.RedstoneGameTestCases.circuitsAndConcurrentSignals(helper);
+    }
+
     @GameTest(template = "bastion/blocks/air", timeoutTicks = 100)
     public static void mainThreadBoundaryHandoffs(GameTestHelper helper) {
         RegionalChunkGameTestCases.mainThreadBoundaryHandoffs(helper);

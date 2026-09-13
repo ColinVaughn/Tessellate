@@ -130,6 +130,17 @@ public final class RegionalBlockEvents {
             return;
         }
 
+        // A piston can push twelve blocks and inspect the block after them.
+        if (event.block() instanceof net.minecraft.world.level.block.piston.PistonBaseBlock
+            && !RedstoneUpdates.canRun(this.level, event.pos(), 16)) {
+            RedstoneUpdates.defer(() -> {
+                List<BlockEventData> retry = new ArrayList<>();
+                process(event, queueId, retry);
+                retry.forEach(this::add);
+            });
+            return;
+        }
+
         BlockState state = this.level.getBlockState(event.pos());
         if (!state.is(event.block())) {
             return;

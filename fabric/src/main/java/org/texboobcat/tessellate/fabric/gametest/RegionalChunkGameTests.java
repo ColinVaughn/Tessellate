@@ -17,6 +17,26 @@ import java.util.UUID;
 
 public final class RegionalChunkGameTests {
 
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE, timeoutTicks = 400, batch = "redstone-ownership")
+    public void loadedUnownedRedstoneUpdates(GameTestHelper helper) {
+        org.texboobcat.tessellate.gametest.RedstoneGameTestCases.loadedUnownedUpdates(helper);
+    }
+
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE, timeoutTicks = 400, batch = "redstone-torches")
+    public void torchBurnoutStaysLocal(GameTestHelper helper) {
+        org.texboobcat.tessellate.gametest.RedstoneGameTestCases.torchBurnoutStaysLocal(helper);
+    }
+
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE, timeoutTicks = 200, batch = "redstone-boundary")
+    public void unloadedRedstoneUpdates(GameTestHelper helper) {
+        org.texboobcat.tessellate.gametest.RedstoneGameTestCases.unloadedUpdates(helper);
+    }
+
+    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE, timeoutTicks = 400, batch = "redstone-circuits")
+    public void redstoneCircuitsAndConcurrentSignals(GameTestHelper helper) {
+        org.texboobcat.tessellate.gametest.RedstoneGameTestCases.circuitsAndConcurrentSignals(helper);
+    }
+
     @GameTest(template = FabricGameTest.EMPTY_STRUCTURE, timeoutTicks = 100)
     public void mainThreadBoundaryHandoffs(GameTestHelper helper) {
         RegionalChunkGameTestCases.mainThreadBoundaryHandoffs(helper);
