@@ -131,6 +131,12 @@ public final class RegionalLevelTicks<T> extends LevelTicks<T> {
             () -> owned.ticks().hasScheduledTick(pos, type));
     }
 
+    /** Non-reporting preflight before a worker enters a callback that may query ticks. */
+    public boolean isOwnedBy(long chunkPos, Region region) {
+        OwnedContainer<T> owned = this.containers.get(chunkPos);
+        return owned != null && owned.regionId() == region.id();
+    }
+
     @Override
     public boolean willTickThisTick(BlockPos pos, T type) {
         OwnedContainer<T> owned = this.containers.get(ChunkPos.asLong(pos));

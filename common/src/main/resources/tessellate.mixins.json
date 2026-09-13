@@ -6,6 +6,7 @@
   "mixins": [
     "ChunkMapMixin",
     "ChunkMapInvoker",
+    "ClientboundLevelChunkPacketDataMixin",
     "CommandsMixin",
     "CollectingNeighborUpdaterAccessor",
     "EntityCallbacksMixin",
@@ -25,10 +26,14 @@
     "accessor.PersistentEntitySectionManagerAccessor",
     "PersistentEntitySectionManagerMixin",
     "RaidMixin",
+    "RedStoneWireBlockMixin",
+    "RedstoneTorchBlockMixin",
+    "RedstoneTorchBlockMixin$ToggleAccessor",
     "ServerChunkCacheMixin",
     "ServerGamePacketListenerMixin",
     "accessor.ServerLevelEntityManagerAccessor",
     "ServerLevelMixin",
+    "ServerLevelRedstoneMixin",
     "accessor.WalkNodeEvaluatorInvoker",
     "WorldBorderMixin"
   ],

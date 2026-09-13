@@ -116,6 +116,7 @@ public final class RegionalChunkGameTestCases {
             () -> level.updateNeighbourForOutputSignal(outputPos, Blocks.STONE), () -> { }));
         helper.assertTrue(RegionTracker.unavailableChunks() == unavailableBefore,
             "output-signal check requested its unloaded adjacent chunk");
+        assertPendingOutputSignalChunk(helper, level, outputPos, unavailableBefore);
         RegionWorkers.runAllAndWait(List.of(() -> level.getChunk(
             remoteChunkX + 1, remoteChunkZ, ChunkStatus.FULL, false), () -> { }));
         helper.assertTrue(RegionTracker.unavailableChunks() == unavailableBefore
@@ -123,6 +124,7 @@ public final class RegionalChunkGameTestCases {
             "a non-loading chunk probe degraded region ticking");
 
         assertWorkerChunkFuture(helper, level, start);
+        assertChunkPacketWaitsForOwner(helper, level, start, index, region);
 
         MainThreadBoundaries.Snapshot sectionBefore = MainThreadBoundaries.snapshot(
             MainThreadBoundaries.Boundary.ENTITY_LIFECYCLE);
@@ -153,6 +155,54 @@ public final class RegionalChunkGameTestCases {
         entity.discard();
         spawned.discard();
         helper.succeed();
+    }
+
+    private static void assertPendingOutputSignalChunk(GameTestHelper helper, ServerLevel level,
+                                                      BlockPos outputPos, long unavailableBefore) {
+        var source = level.getChunkSource();
+        var pending = new net.minecraft.world.level.ChunkPos(outputPos.east(2));
+        var tickets = source.chunkMap.getDistanceManager();
+        int ticketLevel = net.minecraft.server.level.ChunkLevel.byStatus(ChunkStatus.FULL);
+        tickets.addTicket(net.minecraft.server.level.TicketType.UNKNOWN, pending, ticketLevel, pending);
+        try {
+            // Publish the holder without pumping the main-thread generation/completion tasks.
+            tickets.runAllUpdates(source.chunkMap);
+            var promote = net.minecraft.server.level.ChunkMap.class.getDeclaredMethod("promoteChunkMap");
+            promote.setAccessible(true);
+            promote.invoke(source.chunkMap);
+            helper.assertTrue(level.hasChunkAt(outputPos.east(2)), "pending chunk has no ticket");
+            RegionWorkers.runAllAndWait(List.of(() -> {
+                helper.assertTrue(source.getChunk(pending.x, pending.z, ChunkStatus.FULL, false) == null,
+                    "pending chunk unexpectedly completed before the worker probe");
+                level.updateNeighbourForOutputSignal(outputPos, Blocks.STONE);
+                level.updateNeighbourForOutputSignal(outputPos.east(), Blocks.STONE);
+            }, () -> { }));
+            helper.assertTrue(RegionTracker.unavailableChunks() == unavailableBefore,
+                "a comparator read tried to load a ticketed but unavailable chunk");
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException("could not publish the pending chunk holder", failure);
+        } finally {
+            // Finish the artificial promotion before releasing its ticket, including on failure.
+            source.getChunk(pending.x, pending.z, ChunkStatus.FULL, true);
+            tickets.removeTicket(net.minecraft.server.level.TicketType.UNKNOWN, pending, ticketLevel, pending);
+        }
+    }
+
+    private static void assertChunkPacketWaitsForOwner(GameTestHelper helper, ServerLevel level,
+            BlockPos pos, LevelRegionIndex index, Region region) {
+        var chunk = level.getChunkAt(pos);
+        new net.minecraft.network.protocol.game.ClientboundLevelChunkPacketData(chunk);
+        var state = index.stateFor(region);
+        helper.assertTrue(Config.asyncRegionLoops && state.tryClaim(), "could not claim packet-test owner");
+        var release = java.util.concurrent.CompletableFuture.runAsync(state::release,
+            java.util.concurrent.CompletableFuture.delayedExecutor(200, TimeUnit.MILLISECONDS));
+        try {
+            new net.minecraft.network.protocol.game.ClientboundLevelChunkPacketData(chunk);
+            helper.assertTrue(!state.isInFlight(), "chunk packet read its owner while it was still ticking");
+        } finally {
+            release.join();
+            state.release();
+        }
     }
 
     private static void assertWorkerChunkFuture(GameTestHelper helper, ServerLevel level,
