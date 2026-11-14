@@ -101,6 +101,10 @@ public final class LevelRegionIndex implements RegionizerListener {
     // Positional compatibility work resolves owners at execution time.
     private final RegionalTaskQueue regionWork = new RegionalTaskQueue();
 
+    // Decides which regions share a scheduler task. Per level, so its hysteresis state follows
+    // that level's regions. Main thread only.
+    private final LoadBalancePlanner planner = new LoadBalancePlanner();
+
     // Resolved lazily: the level is not fully built when this index is created.
     private net.minecraft.world.level.entity.LevelCallback<Entity> levelCallbacks;
 
@@ -374,7 +378,7 @@ public final class LevelRegionIndex implements RegionizerListener {
             ? this.orphans.snapshot()
             : List.of();
 
-        RegionWorkers.runAllAndWait(tasks);
+        RegionWorkers.runPlannedAndWait(this.planner, tasks);
 
         tickUnownedRegionWork(drains, chunkWork, eventDrain);
         // Custom spawners are main-thread work. The chunk batch leases their player regions
@@ -394,11 +398,11 @@ public final class LevelRegionIndex implements RegionizerListener {
         finishFullRegionTick(start);
     }
 
-    private List<Runnable> prepareFullRegionTasks(List<Region> regions,
+    private List<RegionWorkers.PlannedTask> prepareFullRegionTasks(List<Region> regions,
             List<ScheduledDrain> drains, Map<Integer, List<TickingBlockEntity>> blockEntities,
             Consumer<Entity> entityConsumer, boolean tickEntityPhase,
             RegionalLevelAccess levelAccess, RegionalChunkWork chunkWork, Runnable eventDrain) {
-        List<Runnable> tasks = new ArrayList<>(regions.size());
+        List<RegionWorkers.PlannedTask> tasks = new ArrayList<>(regions.size());
         int throttled = 0;
         for (Region region : regions) {
             RegionTickState state = this.states.computeIfAbsent(region.id(), RegionTickState::new);
@@ -409,9 +413,9 @@ public final class LevelRegionIndex implements RegionizerListener {
                 state.snapshot();
             }
             RegionRun run = runFor(region);
-            tasks.add(() -> tickFullRegion(run, state, drains,
+            tasks.add(new RegionWorkers.PlannedTask(region, () -> tickFullRegion(run, state, drains,
                 blockEntities.getOrDefault(region.id(), List.of()), entityConsumer,
-                tickEntityPhase, levelAccess, chunkWork, eventDrain));
+                tickEntityPhase, levelAccess, chunkWork, eventDrain)));
         }
         this.lastThrottledRegions = throttled;
         this.lastParallelRegions = tasks.size();
@@ -467,12 +471,24 @@ public final class LevelRegionIndex implements RegionizerListener {
                                   boolean canParallelise) {
         if (canParallelise && ordered.size() > 1) {
             List<Runnable> tasks = new ArrayList<>(ordered.size());
+            List<RegionWorkers.PlannedTask> planned = new ArrayList<>(ordered.size());
+            boolean allOwned = true;
             for (RegionTickState state : ordered) {
                 Region region = this.regionizer.regionForId(state.regionId());
-                tasks.add(() -> tickOneRegion(region, state, consumer));
+                Runnable work = () -> tickOneRegion(region, state, consumer);
+                tasks.add(work);
+                if (region == null) {
+                    allOwned = false; // no region to read a cost from, so no planning
+                } else {
+                    planned.add(new RegionWorkers.PlannedTask(region, work));
+                }
             }
             this.lastParallelRegions = tasks.size();
-            RegionWorkers.runAllAndWait(tasks);
+            if (allOwned) {
+                RegionWorkers.runPlannedAndWait(this.planner, planned);
+            } else {
+                RegionWorkers.runAllAndWait(tasks);
+            }
             return;
         }
 
@@ -502,8 +518,11 @@ public final class LevelRegionIndex implements RegionizerListener {
     }
 
     private void drainRegionWork(@Nullable Region region) {
-        this.regionWork.drain(region, pos -> this.regionizer.regionForChunk(
+        int drained = this.regionWork.drain(region, pos -> this.regionizer.regionForChunk(
             pos.getX() >> 4, pos.getZ() >> 4));
+        if (region != null) {
+            region.load().addQueued(drained);
+        }
     }
 
     private void tickFullRegionsAsync(List<Region> regions, List<ScheduledDrain> drains,
@@ -638,16 +657,19 @@ public final class LevelRegionIndex implements RegionizerListener {
         long nonBlockEntityNanos = 0L;
         try {
             drainRegionWork(region);
+            long scheduledStart = System.nanoTime();
             for (ScheduledDrain drain : drains) {
                 int budget = Math.max(1, drain.fullBudget() / run.divisor());
                 drain.body().accept(budget);
             }
+            region.load().time(RegionLoad.Metric.SCHEDULED, scheduledStart);
             chunkWork.tickRegion().accept(run);
             if (eventDrain != null) {
                 eventDrain.run();
             }
 
             if (tickEntityPhase) {
+                long entityStart = System.nanoTime();
                 PhaseStats.measure(PhaseStats.Phase.ENTITIES, () -> {
                     for (Entity entity : state.currentSnapshot()) {
                         if (run.includes(entity.getId())) {
@@ -655,6 +677,8 @@ public final class LevelRegionIndex implements RegionizerListener {
                         }
                     }
                 });
+                region.load().time(RegionLoad.Metric.ENTITY, entityStart);
+                region.load().setCounts(state.entityCount(), blockEntities.size());
                 nonBlockEntityNanos = System.nanoTime() - regionStart;
                 levelAccess.tessellate$tickRegionalBlockEntities(region, blockEntities);
             }
@@ -701,6 +725,7 @@ public final class LevelRegionIndex implements RegionizerListener {
         }
         try {
             drainRegionWork(region);
+            long entityStart = System.nanoTime();
             PhaseStats.measure(PhaseStats.Phase.ENTITIES, () -> {
                 for (Entity entity : state.currentSnapshot()) {
                     // Sliced by entity id: a stable, evenly spread key, so each entity ticks
@@ -711,6 +736,10 @@ public final class LevelRegionIndex implements RegionizerListener {
                     tickEntity(entity, consumer);
                 }
             });
+            if (region != null) {
+                region.load().time(RegionLoad.Metric.ENTITY, entityStart);
+                region.load().setCounts(state.entityCount(), 0);
+            }
         } finally {
             if (region != null) {
                 RegionThreadContext.exit();
@@ -908,6 +937,9 @@ public final class LevelRegionIndex implements RegionizerListener {
             region.updateCost(
                 region.lastTickNanos() * region.tickDivisor(),
                 region.lastBlockEntityNanos() * region.tickDivisor());
+            // Same moment, same divisor: fold this tick's per-phase measurements into the smoothed
+            // load the planner reads.
+            region.load().endTick(RegionTracker.serverTickNanos(), region.tickDivisor());
         }
     }
 
@@ -1368,6 +1400,8 @@ public final class LevelRegionIndex implements RegionizerListener {
     public void onRegionsMerged(Region survivor, List<Region> merged) {
         RegionTickState target = this.states.computeIfAbsent(survivor.id(), RegionTickState::new);
         for (Region dead : merged) {
+            // The merged region starts with everyone's measured load, not just the survivor's.
+            survivor.load().absorb(dead.load());
             RegionTickState state = this.states.get(dead.id());
             if (state != null) {
                 target.absorb(state);
@@ -1382,9 +1416,17 @@ public final class LevelRegionIndex implements RegionizerListener {
     // membership is re-evaluated against the regionizer.
     @Override
     public void onRegionSplit(Region original, List<Region> splitOff) {
+        // Divide the measured load by section share, so neither half looks idle until it has been
+        // measured again. Sections have already moved: original holds only what it kept.
+        int totalSections = original.sectionCount();
+        for (Region fresh : splitOff) {
+            totalSections += fresh.sectionCount();
+        }
         for (Region fresh : splitOff) {
             this.states.computeIfAbsent(fresh.id(), RegionTickState::new);
+            fresh.load().seedFrom(original.load(), (double) fresh.sectionCount() / Math.max(1, totalSections));
         }
+        original.load().scale((double) original.sectionCount() / Math.max(1, totalSections));
 
         RegionTickState source = this.states.get(original.id());
         if (source != null && source.entityCount() > 0) {

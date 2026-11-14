@@ -18,6 +18,10 @@ public final class Region {
 
     private volatile long lastTickNanos;
     private volatile long lastBlockEntityNanos;
+
+    // Smoothed per-phase CPU load (entities, block entities, scheduled ticks, queue, CPU share).
+    // Read by the scheduling planner. RegionThrottle still decides divisors from costNanos().
+    private final RegionLoad load = new RegionLoad();
     private volatile int lastWorkerIndex = -1;
     private volatile String lastThreadName = "not run";
 
@@ -82,6 +86,11 @@ public final class Region {
 
     public void recordTick(long nanos) {
         this.lastTickNanos = nanos;
+        this.load.add(RegionLoad.Metric.TICK, nanos);
+    }
+
+    public RegionLoad load() {
+        return this.load;
     }
 
     public long lastTickNanos() {
@@ -91,6 +100,9 @@ public final class Region {
     // Kept separate from the entity figure so the two costs stay distinguishable.
     public void recordBlockEntityTick(long nanos) {
         this.lastBlockEntityNanos = nanos;
+        // TICK is the whole region (entities + block entities), the same total the throttle uses.
+        this.load.add(RegionLoad.Metric.BLOCK_ENTITY, nanos);
+        this.load.add(RegionLoad.Metric.TICK, nanos);
     }
 
     public long lastBlockEntityNanos() {

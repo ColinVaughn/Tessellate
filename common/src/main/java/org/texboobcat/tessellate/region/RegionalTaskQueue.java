@@ -26,21 +26,25 @@ final class RegionalTaskQueue {
         return this.pending.isEmpty();
     }
 
-    void drain(@Nullable Region current, Function<BlockPos, Region> ownerAt) {
+    // Returns how many tasks this call ran, which is the region's queue load for the tick.
+    int drain(@Nullable Region current, Function<BlockPos, Region> ownerAt) {
         int remaining = this.pending.size();
+        int ran = 0;
         while (remaining-- > 0) {
             Task task = this.pending.poll();
             if (task == null) {
-                return;
+                return ran;
             }
             Region owner = ownerAt.apply(task.pos());
             if ((current == null && owner == null)
                 || (current != null && owner != null && current.id() == owner.id())) {
                 task.work().run();
+                ran++;
             } else {
                 this.pending.add(task);
             }
         }
+        return ran;
     }
 
     void dispatch(Collection<Region> regions, String levelKey,

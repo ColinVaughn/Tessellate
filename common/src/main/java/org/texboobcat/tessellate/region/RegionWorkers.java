@@ -6,15 +6,15 @@ import org.texboobcat.tessellate.Config;
 import org.texboobcat.tessellate.CompatibilityReporter;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-// The thread pool that runs region ticks.
+// The thread pool that runs region ticks. The pool itself is RegionScheduler (work stealing, a
+// concurrency cap, tasks start in submission order); this class is the mod-facing wrapper that
+// adds task tracking, failure reporting and the load-balanced entry point.
 //
 // Threads are named and identifiable, because the ownership guard's whole job is to say which
 // thread touched what, and "pool-3-thread-2" makes that report useless.
@@ -22,38 +22,23 @@ public final class RegionWorkers {
 
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    private static ExecutorService pool;
+    private static RegionScheduler scheduler;
     private static int poolSize;
     private static final TaskTracker TASKS = new TaskTracker();
 
     private RegionWorkers() {
     }
 
-    // Marker type so the guard and the chunk-access fast path can identify a worker cheaply.
-    public static final class WorkerThread extends Thread implements PhaseStats.WorkerMarker {
-        private final int index;
-
-        WorkerThread(Runnable target, int index) {
-            super(target, "tessellate-region-" + index);
-            this.index = index;
-            setDaemon(true);
-        }
-
-        int index() {
-            return this.index;
-        }
-    }
-
     public static boolean isWorkerThread() {
-        return Thread.currentThread() instanceof WorkerThread;
+        return Thread.currentThread() instanceof RegionScheduler.Worker;
     }
 
     public static int currentWorkerIndex() {
-        return Thread.currentThread() instanceof WorkerThread worker ? worker.index() : -1;
+        return Thread.currentThread() instanceof RegionScheduler.Worker worker ? worker.index() : -1;
     }
 
     public static synchronized void start() {
-        if (pool != null) {
+        if (scheduler != null) {
             return;
         }
         int configured = Config.workerThreads;
@@ -61,29 +46,26 @@ public final class RegionWorkers {
             ? configured
             : Math.max(1, Runtime.getRuntime().availableProcessors() - 2);
 
-        AtomicInteger counter = new AtomicInteger();
-        ThreadFactory factory = runnable -> new WorkerThread(runnable, counter.getAndIncrement());
-        pool = Executors.newFixedThreadPool(poolSize, factory);
-        LOGGER.info("tessellate: started {} region worker thread(s)", poolSize);
+        // Optional cap on tasks running at once, to keep cores free for the main thread, network and
+        // GC. Defaults to the pool size, i.e. no cap beyond the number of workers.
+        int maxConcurrent = Integer.getInteger("tessellate.maxConcurrentRegionTasks", poolSize);
+        scheduler = new RegionScheduler(poolSize, maxConcurrent);
+        LOGGER.info("tessellate: started {} region worker thread(s), at most {} running at once",
+            poolSize, Math.max(1, Math.min(maxConcurrent, poolSize)));
     }
 
     public static synchronized void stop() {
-        if (pool == null) {
+        if (scheduler == null) {
             return;
         }
-        pool.shutdown();
         try {
-            if (!pool.awaitTermination(10, TimeUnit.SECONDS)) {
-                pool.shutdownNow();
-                if (!pool.awaitTermination(10, TimeUnit.SECONDS)) {
-                    LOGGER.warn("tessellate: region workers did not shut down within 20s");
-                }
+            if (!scheduler.shutdownAndAwait(10, TimeUnit.SECONDS)) {
+                LOGGER.warn("tessellate: region workers did not shut down within 20s");
             }
         } catch (InterruptedException e) {
-            pool.shutdownNow();
             Thread.currentThread().interrupt();
         }
-        pool = null;
+        scheduler = null;
     }
 
     public static int poolSize() {
@@ -91,7 +73,7 @@ public final class RegionWorkers {
     }
 
     public static boolean isRunning() {
-        return pool != null && !pool.isShutdown();
+        return scheduler != null && scheduler.isRunning();
     }
 
     // Submits a region tick without waiting for it.
@@ -103,15 +85,13 @@ public final class RegionWorkers {
     public static void submit(Runnable task, java.util.function.Consumer<Throwable> onFailure) {
         TASKS.started();
         try {
-            pool.execute(() -> {
+            scheduler.execute(() -> {
                 try {
                     task.run();
-                } catch (Throwable t) {
-                    onFailure.accept(t);
                 } finally {
                     TASKS.finished();
                 }
-            });
+            }, onFailure);
         } catch (RuntimeException e) {
             TASKS.finished();
             throw e;
@@ -184,58 +164,91 @@ public final class RegionWorkers {
             runSerial(tasks);
             return;
         }
+        try {
+            scheduler.runAllAndWait(tasks);
+        } catch (IllegalStateException e) {
+            Throwable cause = e.getCause();
+            if (cause == null) {
+                throw e; // interrupted while waiting
+            }
+            CompatibilityReporter.report("region-worker", "worker-failure",
+                "region tick failed on a worker thread", cause);
+            throw new IllegalStateException("region tick failed on a worker thread", cause);
+        }
+    }
 
-        CountDownLatch latch = new CountDownLatch(tasks.size());
-        List<Throwable> failures = new ArrayList<>();
-        for (Runnable task : tasks) {
-            submitAndCountDown(task, latch, failures);
+    // One region's work, tagged with the region so the planner can see its measured cost.
+    public record PlannedTask(Region region, Runnable work) {
+    }
+
+    // Like runAllAndWait, but groups regions into tasks by measured load first: a heavy region gets
+    // a task to itself and starts first, many light ones share a task. Regions in one task run one
+    // after another on a single worker; every region still runs exactly once, and a failure in one
+    // does not stop the others in its task. Topology is untouched, so regions stay as isolated as
+    // they were: this only changes how work is handed to threads.
+    public static void runPlannedAndWait(LoadBalancePlanner planner, List<PlannedTask> tasks) {
+        if (tasks.isEmpty()) {
+            return;
+        }
+        if (!isRunning() || tasks.size() == 1) {
+            List<Runnable> serial = new ArrayList<>(tasks.size());
+            for (PlannedTask task : tasks) {
+                serial.add(task.work());
+            }
+            runSerial(serial);
+            return;
         }
 
-        await(latch);
-        throwFailures(failures);
+        List<LoadBalancePlanner.Item> items = new ArrayList<>(tasks.size());
+        Map<Integer, Runnable> byRegion = new HashMap<>();
+        for (PlannedTask task : tasks) {
+            Region region = task.region();
+            RegionLoad load = region.load();
+            // A region with no samples yet (just created) falls back to the throttle's estimate.
+            long cost = load.samples() > 0 ? load.cost() : region.costNanos();
+            items.add(new LoadBalancePlanner.Item(region.id(), cost));
+            byRegion.put(region.id(), task.work());
+        }
+
+        LoadBalancePlanner.Plan plan = planner.plan(items, Math.max(1, poolSize));
+        List<Runnable> grouped = new ArrayList<>(plan.groups().size());
+        for (LoadBalancePlanner.Group group : plan.groups()) {
+            List<Runnable> members = new ArrayList<>(group.regionIds().size());
+            for (int regionId : group.regionIds()) {
+                members.add(byRegion.get(regionId));
+            }
+            grouped.add(members.size() == 1 ? members.get(0) : sequentially(members));
+        }
+        runAllAndWait(grouped);
+    }
+
+    private static Runnable sequentially(List<Runnable> members) {
+        return () -> {
+            Throwable first = null;
+            for (Runnable member : members) {
+                try {
+                    member.run();
+                } catch (Throwable t) {
+                    if (first == null) {
+                        first = t;
+                    } else {
+                        first.addSuppressed(t);
+                    }
+                }
+            }
+            if (first instanceof RuntimeException runtime) {
+                throw runtime;
+            } else if (first instanceof Error error) {
+                throw error;
+            } else if (first != null) {
+                throw new IllegalStateException(first);
+            }
+        };
     }
 
     private static void runSerial(List<Runnable> tasks) {
         for (Runnable task : tasks) {
             task.run();
-        }
-    }
-
-    private static void submitAndCountDown(Runnable task, CountDownLatch latch,
-                                            List<Throwable> failures) {
-        pool.execute(() -> {
-            try {
-                task.run();
-            } catch (Throwable failure) {
-                synchronized (failures) {
-                    failures.add(failure);
-                }
-            } finally {
-                latch.countDown();
-            }
-        });
-    }
-
-    private static void await(CountDownLatch latch) {
-        try {
-            latch.await();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("interrupted waiting for region workers", e);
-        }
-    }
-
-    private static void throwFailures(List<Throwable> failures) {
-        synchronized (failures) {
-            if (!failures.isEmpty()) {
-                Throwable first = failures.get(0);
-                for (int i = 1; i < failures.size(); i++) {
-                    first.addSuppressed(failures.get(i));
-                }
-                CompatibilityReporter.report("region-worker", "worker-failure",
-                    "region tick failed on a worker thread", first);
-                throw new IllegalStateException("region tick failed on a worker thread", first);
-            }
         }
     }
 }
