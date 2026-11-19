@@ -371,7 +371,7 @@ public final class LevelRegionIndex implements RegionizerListener {
             return;
         }
 
-        List<Runnable> tasks = prepareFullRegionTasks(regions, drains, blockEntities,
+        List<RegionWorkers.PlannedTask> tasks = prepareFullRegionTasks(regions, drains, blockEntities,
             entityConsumer, tickEntityPhase, levelAccess, chunkWork, eventDrain);
 
         List<Entity> orphanSnapshot = tickEntityPhase && this.orphans.entityCount() > 0
