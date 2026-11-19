@@ -190,15 +190,21 @@ public final class RegionWorkers {
         if (tasks.isEmpty()) {
             return;
         }
-        if (!isRunning() || tasks.size() == 1) {
-            List<Runnable> serial = new ArrayList<>(tasks.size());
-            for (PlannedTask task : tasks) {
-                serial.add(task.work());
-            }
-            runSerial(serial);
+        List<Runnable> work = new ArrayList<>(tasks.size());
+        boolean allOwned = true;
+        for (PlannedTask task : tasks) {
+            work.add(task.work());
+            allOwned &= task.region() != null;
+        }
+        // Without a region there is no measured cost to plan from; run those tasks unplanned.
+        if (!allOwned || !isRunning() || tasks.size() == 1) {
+            runAllAndWait(work);
             return;
         }
+        runAllAndWait(groupByLoad(planner, tasks));
+    }
 
+    private static List<Runnable> groupByLoad(LoadBalancePlanner planner, List<PlannedTask> tasks) {
         List<LoadBalancePlanner.Item> items = new ArrayList<>(tasks.size());
         Map<Integer, Runnable> byRegion = new HashMap<>();
         for (PlannedTask task : tasks) {
@@ -219,7 +225,7 @@ public final class RegionWorkers {
             }
             grouped.add(members.size() == 1 ? members.get(0) : sequentially(members));
         }
-        runAllAndWait(grouped);
+        return grouped;
     }
 
     private static Runnable sequentially(List<Runnable> members) {

@@ -232,4 +232,35 @@ public final class RegionLoad {
         }
         return (a * weightA + b * weightB) / total;
     }
+
+    /** Null-safe: records messages a region drained (the unowned bucket has no region). */
+    public static void addQueued(Region region, int count) {
+        if (region != null) {
+            region.load().addQueued(count);
+        }
+    }
+
+    /**
+     * Divides the original region's load over itself and the regions split off from it, by section
+     * share. Sections have already moved: {@code original} holds only what it kept.
+     */
+    public static void divideOnSplit(Region original, java.util.List<Region> splitOff) {
+        int total = original.sectionCount();
+        for (Region fresh : splitOff) {
+            total += fresh.sectionCount();
+        }
+        int divisor = Math.max(1, total);
+        for (Region fresh : splitOff) {
+            fresh.load().seedFrom(original.load(), (double) fresh.sectionCount() / divisor);
+        }
+        original.load().scale((double) original.sectionCount() / divisor);
+    }
+
+    /** Null-safe: records the entity phase of a region that ticked only entities (the throttled path). */
+    public static void recordEntityPhase(Region region, long startNanos, int entityCount) {
+        if (region != null) {
+            region.load().time(Metric.ENTITY, startNanos);
+            region.load().setCounts(entityCount, 0);
+        }
+    }
 }

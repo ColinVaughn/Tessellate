@@ -150,63 +150,98 @@ public final class LoadBalancePlanner {
         }
     }
 
+    /** Working layout of light regions: which group each is in, each group's load, and who is unplaced. */
+    private static final class Layout {
+        final Map<Integer, List<Item>> groups = new HashMap<>();
+        final Map<Integer, Long> load = new HashMap<>();
+        final List<Item> loose = new ArrayList<>();
+    }
+
     private boolean packLight(List<Item> light, long target, int workers, List<Group> out) {
         if (light.isEmpty()) {
             return false;
         }
         long capacity = Math.round(target * (1.0 + this.settings.band()));
+        Layout layout = keepStickyGroups(light, capacity);
+        placeLoose(layout, capacity);
+
+        List<Group> built = toGroups(layout.groups);
+        if (shouldRepack(built, workers)) {
+            // One more pass with no stickiness: a clean first-fit-decreasing layout.
+            Layout fresh = new Layout();
+            fresh.loose.addAll(light);
+            placeLoose(fresh, capacity);
+            out.addAll(toGroups(fresh.groups));
+            return true;
+        }
+        out.addAll(built);
+        return false;
+    }
+
+    // Keeps each previous group that still fits; whatever overflows (or was never grouped) is loose.
+    private Layout keepStickyGroups(List<Item> light, long capacity) {
+        Layout layout = new Layout();
         Map<Integer, List<Item>> sticky = new HashMap<>();
-        List<Item> loose = new ArrayList<>();
         for (Item item : light) {
             int group = this.states.get(item.regionId()).lightGroup;
             if (group >= 0) {
                 sticky.computeIfAbsent(group, id -> new ArrayList<>()).add(item);
             } else {
-                loose.add(item);
+                layout.loose.add(item);
             }
         }
-
-        // Keep each previous group that still fits; whatever overflows is repacked below.
-        Map<Integer, Long> load = new HashMap<>();
         for (Map.Entry<Integer, List<Item>> entry : sticky.entrySet()) {
-            entry.getValue().sort(Comparator.comparingLong(Item::costNanos).reversed()
-                .thenComparingInt(Item::regionId));
-            long sum = 0L;
-            List<Item> kept = new ArrayList<>();
-            for (Item item : entry.getValue()) {
-                if (sum + item.costNanos() <= capacity || kept.isEmpty()) {
-                    kept.add(item);
-                    sum += item.costNanos();
-                } else {
-                    this.states.get(item.regionId()).lightGroup = -1;
-                    loose.add(item);
-                }
-            }
-            entry.setValue(kept);
-            load.put(entry.getKey(), sum);
+            trimToCapacity(entry.getKey(), entry.getValue(), capacity, layout);
         }
+        return layout;
+    }
 
-        // First-fit decreasing for the loose ones, into existing groups with room, else a new group.
-        loose.sort(Comparator.comparingLong(Item::costNanos).reversed().thenComparingInt(Item::regionId));
-        for (Item item : loose) {
-            Integer chosen = null;
-            for (Map.Entry<Integer, Long> entry : load.entrySet()) {
-                if (entry.getValue() + item.costNanos() <= capacity
-                    && (chosen == null || entry.getKey() < chosen)) {
-                    chosen = entry.getKey();
-                }
+    private void trimToCapacity(int groupId, List<Item> members, long capacity, Layout layout) {
+        members.sort(Comparator.comparingLong(Item::costNanos).reversed().thenComparingInt(Item::regionId));
+        long sum = 0L;
+        List<Item> kept = new ArrayList<>();
+        for (Item item : members) {
+            if (kept.isEmpty() || sum + item.costNanos() <= capacity) {
+                kept.add(item);
+                sum += item.costNanos();
+            } else {
+                this.states.get(item.regionId()).lightGroup = -1;
+                layout.loose.add(item);
             }
-            if (chosen == null) {
+        }
+        layout.groups.put(groupId, kept);
+        layout.load.put(groupId, sum);
+    }
+
+    // First-fit decreasing: into the lowest-numbered group with room, else a new group.
+    private void placeLoose(Layout layout, long capacity) {
+        layout.loose.sort(Comparator.comparingLong(Item::costNanos).reversed().thenComparingInt(Item::regionId));
+        for (Item item : layout.loose) {
+            int chosen = firstFit(layout.load, item.costNanos(), capacity);
+            if (chosen < 0) {
                 chosen = this.nextGroupId++;
-                load.put(chosen, 0L);
-                sticky.put(chosen, new ArrayList<>());
+                layout.load.put(chosen, 0L);
+                layout.groups.put(chosen, new ArrayList<>());
             }
-            sticky.computeIfAbsent(chosen, id -> new ArrayList<>()).add(item);
-            load.merge(chosen, item.costNanos(), Long::sum);
+            layout.groups.get(chosen).add(item);
+            layout.load.merge(chosen, item.costNanos(), Long::sum);
             this.states.get(item.regionId()).lightGroup = chosen;
         }
+        layout.loose.clear();
+    }
 
-        List<Group> built = toGroups(sticky);
+    private static int firstFit(Map<Integer, Long> load, long cost, long capacity) {
+        int chosen = -1;
+        for (Map.Entry<Integer, Long> entry : load.entrySet()) {
+            if (entry.getValue() + cost <= capacity && (chosen < 0 || entry.getKey() < chosen)) {
+                chosen = entry.getKey();
+            }
+        }
+        return chosen;
+    }
+
+    // Repack only when the light groups are clearly unbalanced and the cooldown has passed.
+    private boolean shouldRepack(List<Group> built, int workers) {
         long lightTotal = 0L;
         for (Group group : built) {
             lightTotal += group.costNanos();
@@ -217,40 +252,9 @@ public final class LoadBalancePlanner {
         if (unbalanced && cooled) {
             this.lastRepackPlan = this.plans;
             this.repacks++;
-            for (Item item : light) {
-                this.states.get(item.regionId()).lightGroup = -1;
-            }
-            // One more pass with no stickiness: a clean first-fit-decreasing layout.
-            return repackFresh(light, capacity, out);
+            return true;
         }
-        out.addAll(built);
         return false;
-    }
-
-    private boolean repackFresh(List<Item> light, long capacity, List<Group> out) {
-        List<Item> ordered = new ArrayList<>(light);
-        ordered.sort(Comparator.comparingLong(Item::costNanos).reversed().thenComparingInt(Item::regionId));
-        Map<Integer, List<Item>> groups = new HashMap<>();
-        Map<Integer, Long> load = new HashMap<>();
-        for (Item item : ordered) {
-            Integer chosen = null;
-            for (Map.Entry<Integer, Long> entry : load.entrySet()) {
-                if (entry.getValue() + item.costNanos() <= capacity
-                    && (chosen == null || entry.getKey() < chosen)) {
-                    chosen = entry.getKey();
-                }
-            }
-            if (chosen == null) {
-                chosen = this.nextGroupId++;
-                load.put(chosen, 0L);
-                groups.put(chosen, new ArrayList<>());
-            }
-            groups.get(chosen).add(item);
-            load.merge(chosen, item.costNanos(), Long::sum);
-            this.states.get(item.regionId()).lightGroup = chosen;
-        }
-        out.addAll(toGroups(groups));
-        return true;
     }
 
     private static List<Group> toGroups(Map<Integer, List<Item>> byGroup) {
