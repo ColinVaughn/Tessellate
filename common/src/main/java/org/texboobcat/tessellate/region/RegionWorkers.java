@@ -24,6 +24,9 @@ public final class RegionWorkers {
 
     private static RegionScheduler scheduler;
     private static int poolSize;
+    private static volatile boolean balancing =
+        !"false".equalsIgnoreCase(System.getProperty("tessellate.balance"));
+    private static volatile LoadBalancePlanner.Plan lastPlan;
     private static final TaskTracker TASKS = new TaskTracker();
 
     private RegionWorkers() {
@@ -66,6 +69,15 @@ public final class RegionWorkers {
             Thread.currentThread().interrupt();
         }
         scheduler = null;
+    }
+
+    // Changes the worker count while running (main thread, between ticks): drains in-flight region
+    // tasks, restarts the pool with the new size. 0 means the default (cores - 2).
+    public static synchronized void resize(int threads) {
+        awaitIdle();
+        stop();
+        Config.workerThreads = Math.max(0, threads);
+        start();
     }
 
     public static int poolSize() {
@@ -205,27 +217,89 @@ public final class RegionWorkers {
     }
 
     private static List<Runnable> groupByLoad(LoadBalancePlanner planner, List<PlannedTask> tasks) {
+        List<List<PlannedTask>> groups = planGroups(planner, tasks);
+        List<Runnable> grouped = new ArrayList<>(groups.size());
+        for (List<PlannedTask> group : groups) {
+            grouped.add(asTask(group));
+        }
+        return grouped;
+    }
+
+    private static List<List<PlannedTask>> planGroups(LoadBalancePlanner planner,
+                                                      List<PlannedTask> tasks) {
         List<LoadBalancePlanner.Item> items = new ArrayList<>(tasks.size());
-        Map<Integer, Runnable> byRegion = new HashMap<>();
+        Map<Integer, PlannedTask> byRegion = new HashMap<>();
         for (PlannedTask task : tasks) {
             Region region = task.region();
             RegionLoad load = region.load();
             // A region with no samples yet (just created) falls back to the throttle's estimate.
             long cost = load.samples() > 0 ? load.cost() : region.costNanos();
             items.add(new LoadBalancePlanner.Item(region.id(), cost));
-            byRegion.put(region.id(), task.work());
+            byRegion.put(region.id(), task);
         }
 
+        if (!balancing || tasks.size() < 2) {
+            List<List<PlannedTask>> single = new ArrayList<>(tasks.size());
+            for (PlannedTask task : tasks) {
+                single.add(List.of(task));
+            }
+            return single;
+        }
         LoadBalancePlanner.Plan plan = planner.plan(items, Math.max(1, poolSize));
-        List<Runnable> grouped = new ArrayList<>(plan.groups().size());
+        lastPlan = plan;
+        List<List<PlannedTask>> groups = new ArrayList<>(plan.groups().size());
         for (LoadBalancePlanner.Group group : plan.groups()) {
-            List<Runnable> members = new ArrayList<>(group.regionIds().size());
+            List<PlannedTask> members = new ArrayList<>(group.regionIds().size());
             for (int regionId : group.regionIds()) {
                 members.add(byRegion.get(regionId));
             }
-            grouped.add(members.size() == 1 ? members.get(0) : sequentially(members));
+            groups.add(members);
         }
-        return grouped;
+        return groups;
+    }
+
+    private static Runnable asTask(List<PlannedTask> group) {
+        List<Runnable> members = new ArrayList<>(group.size());
+        for (PlannedTask task : group) {
+            members.add(task.work());
+        }
+        return members.size() == 1 ? members.get(0) : sequentially(members);
+    }
+
+    // Asynchronous counterpart of runPlannedAndWait: nothing is awaited. Each planned group becomes
+    // one scheduler task. If a submit fails, the regions of that group are handed to onSubmitFailure
+    // so their claims can be released.
+    public static void submitPlanned(LoadBalancePlanner planner, List<PlannedTask> tasks,
+                                     java.util.function.Consumer<Throwable> onFailure,
+                                     java.util.function.Consumer<Region> onSubmitFailure) {
+        for (List<PlannedTask> group : planGroups(planner, tasks)) {
+            try {
+                submit(asTask(group), onFailure);
+            } catch (RuntimeException e) {
+                for (PlannedTask task : group) {
+                    onSubmitFailure.accept(task.region());
+                }
+                throw e;
+            }
+        }
+    }
+
+    // Runtime switch (tessellate balance on|off); defaults on unless -Dtessellate.balance=false.
+    public static boolean balancing() {
+        return balancing;
+    }
+
+    public static void setBalancing(boolean enabled) {
+        balancing = enabled;
+    }
+
+    // The most recent plan, for the status command.
+    public static LoadBalancePlanner.Plan lastPlan() {
+        return lastPlan;
+    }
+
+    public static RegionScheduler scheduler() {
+        return scheduler;
     }
 
     private static Runnable sequentially(List<Runnable> members) {

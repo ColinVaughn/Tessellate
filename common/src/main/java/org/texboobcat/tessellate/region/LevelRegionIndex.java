@@ -157,6 +157,10 @@ public final class LevelRegionIndex implements RegionizerListener {
         return this.level;
     }
 
+    public LoadBalancePlanner planner() {
+        return this.planner;
+    }
+
     public String levelKey() {
         return this.levelKey;
     }
@@ -575,41 +579,52 @@ public final class LevelRegionIndex implements RegionizerListener {
         java.util.concurrent.atomic.AtomicInteger remaining = tickEntityPhase
             ? new java.util.concurrent.atomic.AtomicInteger(claimed.size())
             : null;
-        for (Claimed item : claimed) {
-            submitClaimedRegion(item, remaining, drains, blockEntities, entityConsumer,
-                tickEntityPhase, levelAccess, chunkWork, eventDrain);
-        }
+        submitPlanned(claimed, remaining, drains, blockEntities, entityConsumer,
+            tickEntityPhase, levelAccess, chunkWork, eventDrain);
     }
 
-    private void submitClaimedRegion(Claimed item,
+    // Load-balanced submit: the planner groups claimed regions into scheduler tasks (a heavy region
+    // alone, light ones sharing), but each region still runs exactly once and releases its own claim.
+    private void submitPlanned(List<Claimed> claimed,
+            java.util.concurrent.atomic.AtomicInteger remaining, List<ScheduledDrain> drains,
+            Map<Integer, List<TickingBlockEntity>> blockEntities,
+            Consumer<Entity> entityConsumer, boolean tickEntityPhase,
+            RegionalLevelAccess levelAccess, RegionalChunkWork chunkWork, Runnable eventDrain) {
+        List<RegionWorkers.PlannedTask> planned = new ArrayList<>(claimed.size());
+        for (Claimed item : claimed) {
+            planned.add(new RegionWorkers.PlannedTask(item.run().region(),
+                regionTask(item, remaining, drains, blockEntities, entityConsumer,
+                    tickEntityPhase, levelAccess, chunkWork, eventDrain)));
+        }
+        RegionWorkers.submitPlanned(this.planner, planned, LevelRegionIndex::onWorkerFailure,
+            region -> this.states.get(region.id()).release());
+    }
+
+    private static void onWorkerFailure(Throwable failure) {
+        RegionTracker.degradeToSerial("region threw on a worker thread: " + failure, failure);
+        LOGGER.error("tessellate: region tick failed on a worker thread", failure);
+    }
+
+    private Runnable regionTask(Claimed item,
             java.util.concurrent.atomic.AtomicInteger remaining, List<ScheduledDrain> drains,
             Map<Integer, List<TickingBlockEntity>> blockEntities,
             Consumer<Entity> entityConsumer, boolean tickEntityPhase,
             RegionalLevelAccess levelAccess, RegionalChunkWork chunkWork, Runnable eventDrain) {
         Region region = item.run().region();
-        try {
-            RegionWorkers.submit(() -> {
-                try {
-                    tickFullRegion(item.run(), item.state(), drains,
-                        blockEntities.getOrDefault(region.id(), List.of()), entityConsumer,
-                        tickEntityPhase, levelAccess, chunkWork, eventDrain);
-                } finally {
-                    item.state().release();
-                    DeferredMainThreadWork.deferForRegion(
-                        MainThreadBoundaries.Boundary.CHUNK_PLAYER_BROADCASTS,
-                        this.levelKey, region.id(),
-                        () -> chunkWork.finishRegion().accept(region));
-                    finishAsyncBlockEntityPhase(remaining, region, levelAccess);
-                }
-            }, failure -> {
-                RegionTracker.degradeToSerial("region#" + region.id()
-                    + " threw on a worker thread: " + failure, failure);
-                LOGGER.error("tessellate: region tick failed on a worker thread", failure);
-            });
-        } catch (RuntimeException failure) {
-            item.state().release();
-            throw failure;
-        }
+        return () -> {
+            try {
+                tickFullRegion(item.run(), item.state(), drains,
+                    blockEntities.getOrDefault(region.id(), List.of()), entityConsumer,
+                    tickEntityPhase, levelAccess, chunkWork, eventDrain);
+            } finally {
+                item.state().release();
+                DeferredMainThreadWork.deferForRegion(
+                    MainThreadBoundaries.Boundary.CHUNK_PLAYER_BROADCASTS,
+                    this.levelKey, region.id(),
+                    () -> chunkWork.finishRegion().accept(region));
+                finishAsyncBlockEntityPhase(remaining, region, levelAccess);
+            }
+        };
     }
 
     private void finishAsyncBlockEntityPhase(java.util.concurrent.atomic.AtomicInteger remaining,

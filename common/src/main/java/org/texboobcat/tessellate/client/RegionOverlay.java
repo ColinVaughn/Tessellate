@@ -84,23 +84,23 @@ public final class RegionOverlay {
         float green = ((color >> 8) & 0xFF) / 255.0F;
         float blue = (color & 0xFF) / 255.0F;
         float wallAlpha = cell.regionId() == current.payload().currentRegionId()
-            ? 0.11F + pulse * 0.05F : 0.075F;
+            ? 0.30F + pulse * 0.12F : 0.20F;
 
         if (!sameRegion(current, sectionX - 1, sectionZ, cell.regionId())) {
-            renderBox(poseStack, buffers, camera, minX - 0.06, minY, minZ,
-                minX + 0.06, maxY, minZ + cellSize, red, green, blue, wallAlpha);
+            renderBox(poseStack, buffers, camera, minX - 0.15, minY, minZ,
+                minX + 0.15, maxY, minZ + cellSize, red, green, blue, wallAlpha);
         }
         if (!sameRegion(current, sectionX + 1, sectionZ, cell.regionId())) {
-            renderBox(poseStack, buffers, camera, minX + cellSize - 0.06, minY, minZ,
-                minX + cellSize + 0.06, maxY, minZ + cellSize, red, green, blue, wallAlpha);
+            renderBox(poseStack, buffers, camera, minX + cellSize - 0.15, minY, minZ,
+                minX + cellSize + 0.15, maxY, minZ + cellSize, red, green, blue, wallAlpha);
         }
         if (!sameRegion(current, sectionX, sectionZ - 1, cell.regionId())) {
-            renderBox(poseStack, buffers, camera, minX, minY, minZ - 0.06,
-                minX + cellSize, maxY, minZ + 0.06, red, green, blue, wallAlpha);
+            renderBox(poseStack, buffers, camera, minX, minY, minZ - 0.15,
+                minX + cellSize, maxY, minZ + 0.15, red, green, blue, wallAlpha);
         }
         if (!sameRegion(current, sectionX, sectionZ + 1, cell.regionId())) {
-            renderBox(poseStack, buffers, camera, minX, minY, minZ + cellSize - 0.06,
-                minX + cellSize, maxY, minZ + cellSize + 0.06, red, green, blue, wallAlpha);
+            renderBox(poseStack, buffers, camera, minX, minY, minZ + cellSize - 0.15,
+                minX + cellSize, maxY, minZ + cellSize + 0.15, red, green, blue, wallAlpha);
         }
     }
 
