@@ -67,7 +67,8 @@ public final class Tessellate {
 
     private static void applyRemoteCompatibilityRules() {
         var remoteRules = CompatibilityReporter.loadRemoteRules();
-        TessellateApiInternal.configureRemoteMainThreadEntities(remoteRules.mainThreadEntities());
+        TessellateApiInternal.configureRemoteMainThreadEntities(
+            withBuiltInRules(remoteRules.mainThreadEntities()));
         TessellateApiInternal.configureRemoteMainThreadBlockEntities(
             remoteRules.mainThreadBlockEntities());
         CompatibilityTicks.configureRemoteEntitySerialization(
@@ -95,6 +96,19 @@ public final class Tessellate {
         if (Config.regionsEnabled && Config.parallelTickingConfigured()) {
             applySerialRegionRules(remoteRules);
         }
+    }
+
+    // Rules shipped with the mod apply whether or not the remote rules could be fetched.
+    private static java.util.List<String> withBuiltInRules(java.util.List<String> remote) {
+        java.util.List<String> builtIn = BuiltInCompatibility.mainThreadEntities(
+            dev.architectury.platform.Platform::isModLoaded);
+        if (!builtIn.isEmpty()) {
+            LOGGER.info("tessellate: built-in compatibility, main-thread entities: {}",
+                String.join(", ", builtIn));
+        }
+        java.util.List<String> all = new java.util.ArrayList<>(remote);
+        all.addAll(builtIn);
+        return all;
     }
 
     private static void applySerialRegionRules(CompatibilityReporter.RemoteRules remoteRules) {
