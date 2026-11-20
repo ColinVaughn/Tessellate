@@ -1,6 +1,8 @@
 package org.texboobcat.tessellate.api;
 
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.tags.TagKey;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -25,12 +27,14 @@ public final class TessellateApi {
         ConcurrentHashMap.newKeySet();
     private static final Set<BlockEntityType<?>> MAIN_THREAD_BLOCK_ENTITY_TYPES =
         ConcurrentHashMap.newKeySet();
-    private static volatile ConfiguredEntities configuredEntities = configuredEntities(Set.of());
-    private static volatile ConfiguredEntities remoteEntities = configuredEntities(Set.of());
+    private static volatile ConfiguredEntities configuredEntities = emptyEntities();
+    private static volatile ConfiguredEntities remoteEntities = emptyEntities();
     private static volatile ConfiguredBlockEntities remoteBlockEntities =
         configuredBlockEntities(Set.of());
 
-    private record ConfiguredEntities(Set<ResourceLocation> ids,
+    // Exact ids ("mod:entity"), whole namespaces ("mod:*") and entity type tags ("#mod:tag").
+    private record ConfiguredEntities(Set<ResourceLocation> ids, Set<String> namespaces,
+                                      Set<TagKey<EntityType<?>>> tags,
                                       ConcurrentMap<EntityType<?>, Boolean> decisions) {
     }
 
@@ -62,14 +66,22 @@ public final class TessellateApi {
         if (MAIN_THREAD_ENTITY_TYPES.contains(type)) {
             return true;
         }
-        ConfiguredEntities configured = configuredEntities;
-        if (configured.decisions().computeIfAbsent(type, candidate ->
-                configured.ids().contains(BuiltInRegistries.ENTITY_TYPE.getKey(candidate)))) {
-            return true;
-        }
-        ConfiguredEntities remote = remoteEntities;
-        return remote.decisions().computeIfAbsent(type, candidate ->
-            remote.ids().contains(BuiltInRegistries.ENTITY_TYPE.getKey(candidate)));
+        return matches(configuredEntities, type) || matches(remoteEntities, type);
+    }
+
+    private static boolean matches(ConfiguredEntities config, EntityType<?> type) {
+        return config.decisions().computeIfAbsent(type, candidate -> {
+            ResourceLocation key = BuiltInRegistries.ENTITY_TYPE.getKey(candidate);
+            if (config.ids().contains(key) || config.namespaces().contains(key.getNamespace())) {
+                return true;
+            }
+            for (TagKey<EntityType<?>> tag : config.tags()) {
+                if (candidate.is(tag)) {
+                    return true;
+                }
+            }
+            return false;
+        });
     }
 
     static void configureMainThreadEntities(Collection<String> entityIds) {
@@ -90,14 +102,32 @@ public final class TessellateApi {
         remoteBlockEntities = configuredBlockEntities(ids);
     }
 
-    private static ConfiguredEntities parseConfiguredEntities(Collection<String> entityIds) {
-        Objects.requireNonNull(entityIds, "entityIds");
-        Set<ResourceLocation> ids = entityIds.stream()
-            .filter(Objects::nonNull)
-            .map(ResourceLocation::tryParse)
-            .filter(Objects::nonNull)
-            .collect(java.util.stream.Collectors.toUnmodifiableSet());
-        return configuredEntities(ids);
+    private static ConfiguredEntities parseConfiguredEntities(Collection<String> entries) {
+        Objects.requireNonNull(entries, "entityIds");
+        Set<ResourceLocation> ids = new java.util.HashSet<>();
+        Set<String> namespaces = new java.util.HashSet<>();
+        Set<TagKey<EntityType<?>>> tags = new java.util.HashSet<>();
+        for (String raw : entries) {
+            if (raw == null) {
+                continue;
+            }
+            String entry = raw.strip();
+            if (entry.startsWith("#")) {
+                ResourceLocation tag = ResourceLocation.tryParse(entry.substring(1));
+                if (tag != null) {
+                    tags.add(TagKey.create(Registries.ENTITY_TYPE, tag));
+                }
+            } else if (entry.endsWith(":*")) {
+                namespaces.add(entry.substring(0, entry.length() - 2));
+            } else {
+                ResourceLocation id = ResourceLocation.tryParse(entry);
+                if (id != null) {
+                    ids.add(id);
+                }
+            }
+        }
+        return new ConfiguredEntities(Set.copyOf(ids), Set.copyOf(namespaces), Set.copyOf(tags),
+            new ConcurrentHashMap<>());
     }
 
     public static boolean requiresMainThreadBlockEntityTick(BlockEntityType<?> type) {
@@ -157,8 +187,8 @@ public final class TessellateApi {
         }
     }
 
-    private static ConfiguredEntities configuredEntities(Set<ResourceLocation> ids) {
-        return new ConfiguredEntities(ids, new ConcurrentHashMap<>());
+    private static ConfiguredEntities emptyEntities() {
+        return new ConfiguredEntities(Set.of(), Set.of(), Set.of(), new ConcurrentHashMap<>());
     }
 
     private static ConfiguredBlockEntities configuredBlockEntities(Set<ResourceLocation> ids) {

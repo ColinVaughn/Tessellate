@@ -215,12 +215,20 @@ public final class TessellateNeoForgeConfig {
     private static final ModConfigSpec.ConfigValue<java.util.List<? extends String>>
             MAIN_THREAD_ENTITIES = BUILDER
         .comment(
-            "Entity type IDs that must tick on the main thread for compatibility with mods",
-            "that have not adopted Tessellate's API. Example: creaturefeature:toadstool")
+            "Entity types that must tick on the main thread for compatibility with mods",
+            "that have not adopted Tessellate's API. Entries are an entity id (creaturefeature:toadstool),",
+            "a whole mod (createbigcannons:*) or an entity type tag (#ritchiesprojectilelib:precise_motion).",
+            "Projectiles of Ritchie's Projectile Library / Create Big Cannons need this: they fly into",
+            "chunks that are still loading, which a region worker cannot wait for.")
         .defineListAllowEmpty("compatibility.mainThreadEntities",
             Config.DEFAULT_MAIN_THREAD_ENTITIES, () -> "minecraft:pig",
-            value -> value instanceof String string
-                && net.minecraft.resources.ResourceLocation.tryParse(string) != null);
+            value -> value instanceof String string && validEntityPattern(string));
+
+    private static boolean validEntityPattern(String entry) {
+        String id = entry.startsWith("#") ? entry.substring(1)
+            : entry.endsWith(":*") ? entry.substring(0, entry.length() - 1) + "x" : entry;
+        return net.minecraft.resources.ResourceLocation.tryParse(id) != null;
+    }
 
     private static final ModConfigSpec.ConfigValue<java.util.List<? extends String>>
             FORCE_SERIAL_MODS = BUILDER

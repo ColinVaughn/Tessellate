@@ -238,7 +238,7 @@ diagnostics.
 | `regions.asyncRegionLoops` | `true` | independent per-region loops without a per-tick barrier |
 | `regions.scopedScheduledTicks` | `true` | region-own block/fluid schedulers; false uses one serial fallback child |
 | `regions.scopedBlockEvents` | `true` | region-own block-event callbacks; false uses the serial fallback queue |
-| `compatibility.mainThreadEntities` | `["creaturefeature:toadstool"]` | entity types forced onto the main thread until their mods adopt the compatibility API |
+| `compatibility.mainThreadEntities` | `["creaturefeature:toadstool", "#ritchiesprojectilelib:precise_motion"]` | entity types forced onto the main thread until their mods adopt the compatibility API. Accepts ids, `mod:*` (a whole mod) and `#namespace:tag` (entity type tags) |
 | `compatibility.forceSerialMods` | `[]` | loaded mod IDs that force serial region ticking for the session |
 | `compatibility.rulesEndpoint` | Tessellate's public rules table | curated compatibility restrictions; blank disables remote rules |
 | `compatibility.rulesApiKey` | public key | read-only rules key; never use a service-role key |

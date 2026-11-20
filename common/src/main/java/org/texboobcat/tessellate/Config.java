@@ -9,7 +9,7 @@ import java.util.regex.Pattern;
 public final class Config {
 
     public static final List<String> DEFAULT_MAIN_THREAD_ENTITIES =
-        List.of("creaturefeature:toadstool");
+        List.of("creaturefeature:toadstool", "#ritchiesprojectilelib:precise_motion");
     public static final String DEFAULT_COMPATIBILITY_RULES_ENDPOINT =
         "https://kuisavsedtdbmuroharj.supabase.co/rest/v1/"
             + "tessellate_entity_compatibility_rules";

@@ -26,6 +26,18 @@ class TessellateApiTest {
     }
 
     @Test
+    void configuredNamespaceWildcardMatchesWholeMod() {
+        TessellateApi.configureMainThreadEntities(List.of("minecraft:*", "#some_mod:not_a_real_tag"));
+        try {
+            assertTrue(TessellateApi.requiresMainThreadEntityTick(EntityType.ALLAY));
+            assertTrue(TessellateApi.requiresMainThreadEntityTick(EntityType.BAT));
+        } finally {
+            TessellateApi.configureMainThreadEntities(List.of());
+        }
+        assertFalse(TessellateApi.requiresMainThreadEntityTick(EntityType.ALLAY));
+    }
+
+    @Test
     void registersMainThreadEntityTypes() {
         assertFalse(TessellateApi.requiresMainThreadEntityTick(EntityType.ALLAY));
 
