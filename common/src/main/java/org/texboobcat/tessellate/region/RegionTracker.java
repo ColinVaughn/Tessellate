@@ -149,13 +149,41 @@ public final class RegionTracker {
     // and the main thread reads it at the start of every tick.
     private static volatile boolean parallelAllowed = true;
     private static volatile String degradeReason;
+    // How long parallel ticking stays off after a worker meets an unloaded chunk.
+    private static final long CHUNK_MISS_PAUSE_MILLIS = Long.getLong("tessellate.chunkMissPauseMs", 5000L);
     private static final java.util.concurrent.atomic.AtomicLong UNAVAILABLE_CHUNKS =
         new java.util.concurrent.atomic.AtomicLong();
     private static final java.util.concurrent.atomic.AtomicLong DEFERRED_AUTOSAVES =
         new java.util.concurrent.atomic.AtomicLong();
 
+    // Non-zero while parallel ticking is only paused (e.g. chunks are still being generated); the
+    // nanoTime after which it resumes. Zero means a permanent degrade or no degrade at all.
+    private static volatile long resumeAtNanos;
+
     public static boolean parallelAllowed() {
-        return parallelAllowed;
+        if (parallelAllowed) {
+            return true;
+        }
+        long resume = resumeAtNanos;
+        if (resume != 0L && System.nanoTime() - resume >= 0L) {
+            resumeAtNanos = 0L;
+            degradeReason = null;
+            parallelAllowed = true;
+            return true;
+        }
+        return false;
+    }
+
+    // Pauses parallel ticking for a while instead of for the whole session. For conditions that
+    // pass by themselves, such as a worker meeting a chunk that is still being generated; a real
+    // safety violation still degrades permanently, even while a pause is running.
+    public static void pauseParallel(String reason, long millis) {
+        if (parallelAllowed) {
+            degradeReason = reason + " (paused " + millis + " ms)";
+            resumeAtNanos = Math.max(1L, System.nanoTime() + millis * 1_000_000L);
+            parallelAllowed = false;
+            LOGGER.info("tessellate: parallel ticking paused for {} ms: {}", millis, reason);
+        }
     }
 
     @Nullable
@@ -195,7 +223,8 @@ public final class RegionTracker {
 
     private static void degradeToSerial(String reasonCode, String reason,
                                         @Nullable Throwable failure) {
-        if (parallelAllowed) {
+        if (parallelAllowed || resumeAtNanos != 0L) {
+            resumeAtNanos = 0L;
             parallelAllowed = false;
             degradeReason = reason;
             CompatibilityReporter.report("region-ticking", "serial-fallback",
@@ -205,7 +234,8 @@ public final class RegionTracker {
     }
 
     public static void forceSerial(String reason) {
-        if (parallelAllowed) {
+        if (parallelAllowed || resumeAtNanos != 0L) {
+            resumeAtNanos = 0L;
             parallelAllowed = false;
             degradeReason = reason;
             LOGGER.warn("tessellate: using serial region ticking: {}", reason);
@@ -218,15 +248,15 @@ public final class RegionTracker {
     // only safe response is to stop ticking in parallel.
     public static void reportUnavailableChunk(int chunkX, int chunkZ, Object status) {
         UNAVAILABLE_CHUNKS.incrementAndGet();
-        degradeToSerial("unloaded_chunk", "a region worker needed chunk [" + chunkX + ", "
-            + chunkZ + "] at status " + status + ", which was not loaded. Fetching it would "
-            + "have required the main thread.");
+        pauseParallel("a region worker needed chunk [" + chunkX + ", " + chunkZ + "] at status "
+            + status + ", which was not loaded (still generating?)", CHUNK_MISS_PAUSE_MILLIS);
     }
 
     public static void reset() {
         INDEXES.clear();
         VIOLATIONS.clear();
         parallelAllowed = true;
+        resumeAtNanos = 0L;
         degradeReason = null;
         UNAVAILABLE_CHUNKS.set(0);
         DeferredMainThreadWork.reset();

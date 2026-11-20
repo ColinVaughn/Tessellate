@@ -400,8 +400,29 @@ public final class ParallelNaturalSpawner {
         FAILURES.increment();
     }
 
+    private static volatile long resumeAtNanos;
+
     public static boolean parallelAllowed() {
-        return parallelAllowed;
+        if (parallelAllowed) {
+            return true;
+        }
+        long resume = resumeAtNanos;
+        if (resume != 0L && System.nanoTime() - resume >= 0L) {
+            resumeAtNanos = 0L;
+            degradeReason = null;
+            parallelAllowed = true;
+            return true;
+        }
+        return false;
+    }
+
+    // Pauses parallel spawning for a while; a real safety violation still degrades permanently.
+    public static void pauseParallel(String reason, long millis) {
+        if (parallelAllowed) {
+            degradeReason = reason + " (paused " + millis + " ms)";
+            resumeAtNanos = Math.max(1L, System.nanoTime() + millis * 1_000_000L);
+            parallelAllowed = false;
+        }
     }
 
     @Nullable
@@ -424,7 +445,8 @@ public final class ParallelNaturalSpawner {
 
     private static void degradeToSerial(String reasonCode, String reason,
                                         @Nullable Throwable failure) {
-        if (parallelAllowed) {
+        if (parallelAllowed || resumeAtNanos != 0L) {
+            resumeAtNanos = 0L;
             parallelAllowed = false;
             degradeReason = reason;
             CompatibilityReporter.report("natural-spawning", "serial-fallback",
@@ -434,7 +456,8 @@ public final class ParallelNaturalSpawner {
     }
 
     public static void forceSerial(String reason) {
-        if (parallelAllowed) {
+        if (parallelAllowed || resumeAtNanos != 0L) {
+            resumeAtNanos = 0L;
             parallelAllowed = false;
             degradeReason = reason;
         }
@@ -457,6 +480,7 @@ public final class ParallelNaturalSpawner {
         OUTSTANDING.set(0);
         PEAK_OUTSTANDING.set(0);
         parallelAllowed = true;
+        resumeAtNanos = 0L;
         degradeReason = null;
         CURRENT.remove();
     }
